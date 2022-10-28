@@ -6,6 +6,7 @@ from typing import List
 
 from dispatch.conversation.enums import ConversationButtonActions
 from dispatch.incident.enums import IncidentStatus
+from dispatch.case.enums import CaseStatus
 
 from dispatch.enums import DispatchEnum, DocumentResourceTypes, DocumentResourceReferenceTypes
 
@@ -27,7 +28,58 @@ class MessageType(DispatchEnum):
     incident_tactical_report = "incident-tactical-report"
     incident_task_list = "incident-task-list"
     incident_task_reminder = "incident-task-reminder"
+    case_notification = "case-notification"
 
+
+CASE_STATUS_DESCRIPTIONS = {
+    CaseStatus.new: "This case is currently waiting to be triaged.",
+    CaseStatus.triage: "This case is actively being triaged by the assignee.",
+    CaseStatus.escalated: "This case has been escalated to an incident, all further triage will take place in the incident context.",
+    CaseStatus.closed: "This case requires no additional triage.",
+}
+
+CASE_TITLE = {
+    "title": "Title",
+    "text": "{{title}}",
+    "buttons": [
+        {
+            "button_text": "View",
+            "button_value": "{{organization_slug}}-{{case_id}}",
+            "button_url": "{{case_url}}",
+        }
+    ],
+}
+
+CASE_PRIORITY = {
+    "title": "Priority - {{priority}}",
+    "text": "{{priority_description}}",
+}
+
+CASE_TYPE = {"title": "Type - {{type}}", "text": "{{type_description}}"}
+CASE_DESCRIPTION = {"title": "Description", "text": "{{description}}"}
+
+CASE_STATUS = {
+    "title": "Status - {{status}}",
+    "status_mapping": CASE_STATUS_DESCRIPTIONS,
+}
+
+CASE_ASSIGNEE = {"title": "Assignee", "text": "{{description}}"}
+
+CASE_NOTIFICATION_COMMON = [CASE_TITLE]
+
+CASE_DETAILS = [
+    CASE_DESCRIPTION,
+    CASE_STATUS,
+    CASE_TYPE,
+    CASE_PRIORITY,
+    CASE_ASSIGNEE,
+]
+
+CASE_SIGNAL_DETAILS = []
+
+CASE_ACTIONS = []
+
+CASE_NOTIFICATION = CASE_NOTIFICATION_COMMON + CASE_DETAILS + CASE_SIGNAL_DETAILS + CASE_ACTIONS
 
 INCIDENT_STATUS_DESCRIPTIONS = {
     IncidentStatus.active: "This incident is under active investigation.",

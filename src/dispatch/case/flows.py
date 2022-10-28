@@ -22,8 +22,10 @@ from dispatch.storage import flows as storage_flows
 from dispatch.storage.enums import StorageAction
 from dispatch.ticket import flows as ticket_flows
 
+
 from .models import Case, CaseStatus
 from .service import get, delete
+from .messaging import send_case_created_notifications, send_case_update_notifications
 
 
 log = logging.getLogger(__name__)
@@ -131,6 +133,7 @@ def case_new_create_flow(*, case_id: int, organization_slug: OrganizationSlug, d
 
     db_session.add(case)
     db_session.commit()
+    return case
 
 
 @background_task
@@ -224,6 +227,7 @@ def case_update_flow(
         )
 
     # we send the case updated notification
+    send_case_update_notifications(case, previous_case, db_session)
 
 
 def case_delete_flow(case: Case, db_session: SessionLocal):

@@ -18,6 +18,11 @@ class Visibility(DispatchEnum):
     restricted = "Restricted"
 
 
+class NotificationSubject(DispatchEnum):
+    case = "Case"
+    incident = "Incident"
+
+
 class SearchTypes(DispatchEnum):
     definition = "Definition"
     document = "Document"

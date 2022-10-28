@@ -4,6 +4,7 @@ from typing import List, Optional, Type
 
 from dispatch.database.core import Base
 from dispatch.incident.models import Incident
+from dispatch.models import PrimaryKey
 from dispatch.plugin import service as plugin_service
 from dispatch.project import service as project_service
 from dispatch.search_filter import service as search_filter_service
@@ -127,10 +128,10 @@ def send(*, db_session, project_id: int, notification: Notification, notificatio
 
 
 def filter_and_send(
-    *, db_session, incident: Incident, class_instance: Type[Base], notification_params: dict
+    *, db_session, project_id: PrimaryKey, class_instance: Type[Base], notification_params: dict
 ):
     """Sends notifications."""
-    notifications = get_all_enabled(db_session=db_session, project_id=incident.project.id)
+    notifications = get_all_enabled(db_session=db_session, project_id=project_id)
     for notification in notifications:
         for search_filter in notification.filters:
             match = search_filter_service.match(
@@ -141,7 +142,7 @@ def filter_and_send(
             if match:
                 send(
                     db_session=db_session,
-                    project_id=incident.project.id,
+                    project_id=project_id,
                     notification=notification,
                     notification_params=notification_params,
                 )
@@ -149,7 +150,7 @@ def filter_and_send(
         if not notification.filters:
             send(
                 db_session=db_session,
-                project_id=incident.project.id,
+                project_id=project_id,
                 notification=notification,
                 notification_params=notification_params,
             )

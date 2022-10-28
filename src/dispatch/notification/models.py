@@ -8,7 +8,7 @@ from sqlalchemy.sql.schema import PrimaryKeyConstraint
 from sqlalchemy_utils import TSVectorType
 
 from dispatch.database.core import Base
-from dispatch.enums import DispatchEnum
+from dispatch.enums import DispatchEnum, NotificationSubject
 from dispatch.project.models import ProjectRead
 from dispatch.search_filter.models import SearchFilterRead, SearchFilterUpdate
 
@@ -42,6 +42,7 @@ class Notification(Base, TimeStampMixin, ProjectMixin, EvergreenMixin):
     id = Column(Integer, primary_key=True)
     name = Column(String)
     description = Column(String)
+    subject = Column(String, default=NotificationSubject.incident)
     type = Column(String)
     target = Column(String)
     enabled = Column(Boolean, default=True)
@@ -65,6 +66,7 @@ class NotificationBase(EvergreenBase):
     name: NameStr
     description: Optional[str] = Field(None, nullable=True)
     type: NotificationTypeEnum
+    subject: NotificationSubject
     target: str
     enabled: Optional[bool]
 
