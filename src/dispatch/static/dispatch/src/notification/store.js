@@ -14,12 +14,28 @@ const getDefaultSelectedState = () => {
     project: null,
     enabled: null,
     evergreen: null,
+    subject: null,
     evergreen_owner: null,
     evergreen_reminder_interval: null,
     filters: [],
     loading: false,
   }
 }
+
+export const notificationSubjects = [
+  {
+    subject: "Case",
+    title: "Case",
+    description: "Creates a new case notification rule",
+    icon: "mdi-briefcase",
+  },
+  {
+    subject: "Incident",
+    title: "Incident",
+    description: "Creates a new incident notification rule",
+    icon: "mdi-file-multiple",
+  },
+]
 
 const state = {
   selected: {

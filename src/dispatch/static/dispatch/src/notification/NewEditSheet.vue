@@ -82,6 +82,7 @@
                 <search-filter-combobox
                   v-model="filters"
                   :project="project"
+                  :subject="subject"
                   label="Filters"
                   hint="Select one or more filters that will determine when notification is sent."
                 />
@@ -184,6 +185,7 @@ export default {
       "selected.filters",
       "selected.evergreen_owner",
       "selected.evergreen",
+      "selected.subject",
       "selected.evergreen_reminder_interval",
       "selected.id",
       "selected.project",

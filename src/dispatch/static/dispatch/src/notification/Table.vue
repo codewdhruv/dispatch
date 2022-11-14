@@ -6,8 +6,20 @@
       <v-col cols="8">
         <settings-breadcrumbs v-model="project" />
       </v-col>
-      <v-col class="text-right">
-        <v-btn color="info" class="mr-2" @click="createEditShow()"> New </v-btn>
+    </v-row>
+    <v-row no-gutters>
+      <v-col v-for="subject in notificationSubjects" :key="subject.subject">
+        <v-card outlined elevation="0" @click.stop="createEditShow({ subject: subject.subject })">
+          <div class="d-flex flex-no-wrap justify-space-between">
+            <div>
+              <v-card-title class="text-h5">{{ subject.title }}</v-card-title>
+              <v-card-subtitle>{{ subject.description }}</v-card-subtitle>
+            </div>
+            <v-avatar class="ma-3" tile>
+              <v-icon x-large>{{ subject.icon }}</v-icon>
+            </v-avatar>
+          </div>
+        </v-card>
       </v-col>
     </v-row>
     <v-row no-gutters>
@@ -80,6 +92,7 @@ import SettingsBreadcrumbs from "@/components/SettingsBreadcrumbs.vue"
 import DeleteDialog from "@/notification/DeleteDialog.vue"
 import NewEditSheet from "@/notification/NewEditSheet.vue"
 import SearchFilter from "@/search/SearchFilter.vue"
+import { notificationSubjects } from "@/notification/store.js"
 
 export default {
   name: "NotificationTable",
@@ -92,11 +105,13 @@ export default {
   },
   data() {
     return {
+      notificationSubjects: notificationSubjects,
       headers: [
         { text: "Name", value: "name", sortable: false },
         { text: "Description", value: "description", sortable: false },
         { text: "Type", value: "type", sortable: false },
         { text: "Target", value: "target", sortable: false },
+        { text: "Subject", value: "subject", sortable: true },
         { text: "Filters", value: "filters", sortable: false },
         { text: "Enabled", value: "enabled", sortable: false },
         { text: "Created At", value: "created_at", sortable: true },

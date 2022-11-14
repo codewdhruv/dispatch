@@ -83,7 +83,8 @@
           </v-list-item>
         </template>
         <template slot="append-outer">
-          <search-filter-create-dialog v-model="createdFilter" />
+          <case-search-filter-create-dialog v-if="subject === 'Case'" v-model="createdFilter" />
+          <incident-search-filter-create-dialog v-else v-model="createdFilter" />
         </template>
       </v-combobox>
     </v-row>
@@ -95,8 +96,8 @@ import { cloneDeep, debounce } from "lodash"
 
 import SearchApi from "@/search/api"
 import SearchUtils from "@/search/utils"
-import SearchFilterCreateDialog from "@/search/SearchFilterCreateDialog.vue"
-
+import CaseSearchFilterCreateDialog from "@/search/CaseSearchFilterCreateDialog.vue"
+import IncidentSearchFilterCreateDialog from "@/search/IncidentSearchFilterCreateDialog.vue"
 export default {
   name: "SearchFilterCombobox",
   props: {
@@ -114,9 +115,16 @@ export default {
       type: [Object],
       default: null,
     },
+    subject: {
+      type: String,
+      default: "incident",
+    },
   },
 
-  components: { SearchFilterCreateDialog },
+  components: {
+    CaseSearchFilterCreateDialog,
+    IncidentSearchFilterCreateDialog,
+  },
 
   data() {
     return {
@@ -168,9 +176,11 @@ export default {
         filterOptions = {
           ...filterOptions,
           filters: {
+            subject: [this.subject],
             project: [this.project],
           },
         }
+        console.log(filterOptions)
         filterOptions = SearchUtils.createParametersFromTableOptions({ ...filterOptions })
       }
 
@@ -187,7 +197,7 @@ export default {
   created() {
     this.fetchData()
     this.$watch(
-      (vm) => [vm.project],
+      (vm) => [vm.project, vm.subject],
       () => {
         this.fetchData()
       }

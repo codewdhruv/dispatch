@@ -1,5 +1,5 @@
 """
-.. module: dispatch.incident.messaging
+.. module: dispatch.case.messaging
     :platform: Unix
     :copyright: (c) 2019 by Netflix Inc., see AUTHORS for more
     :license: Apache, see LICENSE for more details.
@@ -58,5 +58,15 @@ def send_case_created_notifications(case: Case, db_session: SessionLocal):
 
 
 def send_case_update_notifications(case: Case, previous_case: CaseRead, db_session=SessionLocal):
+    """Creates and send case update notifications."""
+    pass
+
+
+def create_case_thread(case: Case, db_session=SessionLocal):
+    """Creates a thread based on the creation notification."""
+    pass
+
+
+def update_case_notification(case: Case, previous_case: CaseRead, db_session=SessionLocal):
     """Sends notifications about case changes"""
     pass

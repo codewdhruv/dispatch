@@ -25,7 +25,7 @@ class SearchFilter(Base, ProjectMixin):
     expression = Column(JSON, nullable=False, default=[])
     creator_id = Column(Integer, ForeignKey(DispatchUser.id))
     creator = relationship("DispatchUser", backref="search_filters")
-    type = Column(String)
+    subject = Column(String)
 
     search_vector = Column(
         TSVectorType("name", "description", weights={"name": "A", "description": "B"})
@@ -36,7 +36,7 @@ class SearchFilter(Base, ProjectMixin):
 class SearchFilterBase(DispatchBase):
     expression: List[dict]
     name: NameStr
-    type: Optional[str]
+    subject: Optional[str]
     description: Optional[str] = Field(None, nullable=True)
 
 
