@@ -42,7 +42,7 @@ class Notification(Base, TimeStampMixin, ProjectMixin, EvergreenMixin):
     id = Column(Integer, primary_key=True)
     name = Column(String)
     description = Column(String)
-    subject = Column(String, default=NotificationSubject.incident)
+    subject = Column(String, default=NotificationSubject.incident, nullable=False)
     type = Column(String)
     target = Column(String)
     enabled = Column(Boolean, default=True)

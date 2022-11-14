@@ -23,7 +23,10 @@ def upgrade():
         nullable=True,
         new_column_name="subject",
     )
+    op.execute("update search_filter set subject = 'Incident'")
     op.add_column("notification", sa.Column("subject", sa.String(), nullable=True))
+    op.execute("update notification set subject = 'Incident'")
+    op.alter_column("notification", "subject", nullable=False)
     # ### end Alembic commands ###
 
 

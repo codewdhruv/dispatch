@@ -11,7 +11,7 @@ from sqlalchemy_utils import TSVectorType
 from dispatch.database.core import Base
 from dispatch.models import DispatchBase, NameStr, ProjectMixin, PrimaryKey
 
-from dispatch.auth.models import DispatchUser
+from dispatch.auth.models import DispatchUser, UserRead
 
 from dispatch.project.models import ProjectRead
 
@@ -25,7 +25,7 @@ class SearchFilter(Base, ProjectMixin):
     expression = Column(JSON, nullable=False, default=[])
     creator_id = Column(Integer, ForeignKey(DispatchUser.id))
     creator = relationship("DispatchUser", backref="search_filters")
-    subject = Column(String)
+    subject = Column(String, nullable=False)
 
     search_vector = Column(
         TSVectorType("name", "description", weights={"name": "A", "description": "B"})
@@ -36,7 +36,7 @@ class SearchFilter(Base, ProjectMixin):
 class SearchFilterBase(DispatchBase):
     expression: List[dict]
     name: NameStr
-    subject: Optional[str]
+    subject: str
     description: Optional[str] = Field(None, nullable=True)
 
 
@@ -50,6 +50,7 @@ class SearchFilterUpdate(SearchFilterBase):
 
 class SearchFilterRead(SearchFilterBase):
     id: PrimaryKey
+    creator: UserRead
 
 
 class SearchFilterPagination(DispatchBase):
