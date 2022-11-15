@@ -6,6 +6,7 @@
 """
 import logging
 
+from dispatch.config import DISPATCH_UI_URL
 from dispatch.database.core import SessionLocal
 from dispatch.case.models import Case, CaseRead
 from dispatch.notification import service as notification_service
@@ -37,6 +38,7 @@ def send_case_created_notifications(case: Case, db_session: SessionLocal):
         "priority_description": case.case_priority.description,
         "assignee": case.assignee,
         "case_id": case.id,
+        "case_url": f"{DISPATCH_UI_URL}/{case.project.organization.slug}/cases/{case.name}",
         "organization_slug": case.project.organization.slug,
     }
 

@@ -32,8 +32,8 @@
                       <v-list-item>
                         <v-list-item-content>
                           <tag-filter-auto-complete
-                            :project="project"
-                            v-model="filters.tag"
+                            :project="searchFilter.project"
+                            v-model="searchFilter.filters.tag"
                             label="Tags"
                           />
                         </v-list-item-content>
@@ -41,35 +41,38 @@
                       <v-list-item>
                         <v-list-item-content>
                           <tag-type-filter-combobox
-                            :project="project"
-                            v-model="filters.tag_type"
+                            :project="searchFilter.project"
+                            v-model="searchFilter.filters.tag_type"
                             label="Tag Types"
                           />
                         </v-list-item-content>
                       </v-list-item>
                       <v-list-item>
                         <v-list-item-content>
-                          <case-type-combobox :project="project" v-model="filters.case_type" />
-                        </v-list-item-content>
-                      </v-list-item>
-                      <v-list-item>
-                        <v-list-item-content>
-                          <case-priority-combobox
-                            :project="project"
-                            v-model="filters.case_priority"
+                          <case-type-combobox
+                            :project="searchFilter.project"
+                            v-model="searchFilter.filters.case_type"
                           />
                         </v-list-item-content>
                       </v-list-item>
                       <v-list-item>
                         <v-list-item-content>
-                          <case-status-multi-select v-model="filters.status" />
+                          <case-priority-combobox
+                            :project="searchFilter.project"
+                            v-model="searchFilter.filters.case_priority"
+                          />
+                        </v-list-item-content>
+                      </v-list-item>
+                      <v-list-item>
+                        <v-list-item-content>
+                          <case-status-multi-select v-model="searchFilter.filters.status" />
                         </v-list-item-content>
                       </v-list-item>
                       <v-list-item>
                         <v-list-item-content>
                           <v-select
                             :items="visibilities"
-                            v-model="filters.visibility"
+                            v-model="searchFilter.filters.visibility"
                             name="visibility"
                             item-text="name"
                             return-object
@@ -82,7 +85,7 @@
                   <v-tab-item>
                     <div style="height: 400px">
                       <MonacoEditor
-                        v-model="expression_str"
+                        v-model="searchFilter.expression_str"
                         :options="editorOptions"
                         language="json"
                       ></MonacoEditor>
@@ -130,7 +133,7 @@
                   Provide a name and description for your filter.
                   <ValidationProvider name="Name" rules="required" immediate>
                     <v-text-field
-                      v-model="name"
+                      v-model="searchFilter.name"
                       label="Name"
                       hint="A name for your saved search."
                       slot-scope="{ errors, valid }"
@@ -142,7 +145,7 @@
                   </ValidationProvider>
                   <ValidationProvider name="Description" rules="required" immediate>
                     <v-textarea
-                      v-model="description"
+                      v-model="searchFilter.description"
                       label="Description"
                       hint="A short description."
                       slot-scope="{ errors, valid }"
@@ -197,7 +200,7 @@ extend("required", {
 })
 
 export default {
-  name: "SearchFilterCreateDialog",
+  name: "CaseSearchFilterCreateDialog",
   props: {
     value: {
       type: Object,
@@ -225,14 +228,20 @@ export default {
         total: null,
       },
       previewRowsLoading: false,
-      filters: {
-        case_type: [],
-        case_priority: [],
-        status: [],
-        tag: [],
-        project: [],
-        tag_type: [],
-        visibility: [],
+      searchFilter: {
+        project: null,
+        expression: null,
+        description: null,
+        name: null,
+        subject: "Case",
+        filters: {
+          case_type: [],
+          case_priority: [],
+          status: [],
+          tag: [],
+          tag_type: [],
+          visibility: [],
+        },
       },
     }
   },
@@ -249,22 +258,14 @@ export default {
     MonacoEditor: () => import("monaco-editor-vue"),
   },
   computed: {
-    ...mapFields("search", [
-      "selected",
-      "selected.description",
-      "selected.expression",
-      "selected.name",
-      "selected.project",
-      "loading",
-      "dialogs.showCreate",
-    ]),
+    ...mapFields("search", ["loading", "dialogs.showCreate"]),
     ...mapFields("route", ["query"]),
     expression_str: {
       get: function () {
-        return JSON.stringify(this.expression, null, "\t") || "[]"
+        return JSON.stringify(this.searchFilter.expression, null, "\t") || "[]"
       },
       set: function (newValue) {
-        this.expression = JSON.parse(newValue)
+        this.searchFilter.expression = JSON.parse(newValue)
       },
     },
   },
@@ -274,7 +275,7 @@ export default {
 
     saveFilter() {
       // reset local data
-      this.save("case").then((filter) => {
+      this.save(this.searchFilter).then((filter) => {
         this.$emit("input", filter)
       })
     },
@@ -293,21 +294,20 @@ export default {
   },
   created() {
     if (this.query.project) {
-      this.project = { name: this.query.project }
+      this.searchFilter.project = { name: this.query.project }
     }
-    this.type = "case"
     this.getPreviewData()
     this.$watch(
       (vm) => [
-        vm.filters.case_type,
-        vm.filters.case_priority,
-        vm.filters.status,
-        vm.filters.tag,
-        vm.filters.tag_type,
-        vm.filters.visibility,
+        vm.searchFilter.filters.case_type,
+        vm.searchFilter.filters.case_priority,
+        vm.searchFilter.filters.status,
+        vm.searchFilter.filters.tag,
+        vm.searchFilter.filters.tag_type,
+        vm.searchFilter.filters.visibility,
       ],
       () => {
-        this.expression = SearchUtils.createFilterExpression(this.filters)
+        this.searchFilter.expression = SearchUtils.createFilterExpression(this.searchFilter.filters)
         this.getPreviewData()
       }
     )

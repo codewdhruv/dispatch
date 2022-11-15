@@ -180,7 +180,6 @@ export default {
             project: [this.project],
           },
         }
-        console.log(filterOptions)
         filterOptions = SearchUtils.createParametersFromTableOptions({ ...filterOptions })
       }
 

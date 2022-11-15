@@ -4,7 +4,7 @@ from jinja2 import Template
 
 from typing import List
 
-from dispatch.conversation.enums import ConversationButtonActions
+from dispatch.conversation.enums import ConversationButtonActions, ThreadButtonActions
 from dispatch.incident.enums import IncidentStatus
 from dispatch.case.enums import CaseStatus
 
@@ -44,6 +44,7 @@ CASE_TITLE = {
     "buttons": [
         {
             "button_text": "View",
+            "button_action": ThreadButtonActions.generic_link,
             "button_value": "{{organization_slug}}-{{case_id}}",
             "button_url": "{{case_url}}",
         }
@@ -807,7 +808,12 @@ def render_message_template(message_template: List[dict], **kwargs):
             for button in d["buttons"]:
                 button["button_text"] = Template(button["button_text"]).render(**kwargs)
                 button["button_value"] = Template(button["button_value"]).render(**kwargs)
-                button["button_action"] = Template(button["button_action"]).render(**kwargs)
+
+                if button.get("button_action"):
+                    button["button_action"] = Template(button["button_action"]).render(**kwargs)
+
+                if button.get("button_url"):
+                    button["button_url"] = Template(button["button_url"]).render(**kwargs)
 
         if d.get("status_mapping"):
             d["text"] = d["status_mapping"][kwargs["status"]]
@@ -819,4 +825,8 @@ def render_message_template(message_template: List[dict], **kwargs):
             d["context"] = Template(d["context"]).render(**kwargs)
 
         data.append(d)
+
+    from pprint import pprint
+
+    pprint(data)
     return data

@@ -3,6 +3,7 @@ import logging
 from typing import List, Optional, Type
 
 from dispatch.database.core import Base
+from dispatch.enums import NotificationSubject
 from dispatch.case.models import Case
 from dispatch.models import PrimaryKey
 from dispatch.plugin import service as plugin_service
@@ -121,6 +122,7 @@ def send(*, db_session, project_id: int, notification: Notification, notificatio
             )
         except Exception as e:
             log.error(f"Error in sending {notification_params['type']}: {e}")
+            log.exception(e)
     else:
         log.warning(
             f"Notification {notification.name} not sent. No {notification.type} plugin is active."
@@ -132,7 +134,11 @@ def filter_and_send(
 ):
     """Sends notifications."""
     notifications = get_all_enabled(db_session=db_session, project_id=project_id)
-    subject = "case" if isinstance(class_instance, Case) else "incident"
+    subject = (
+        NotificationSubject.case
+        if isinstance(class_instance, Case)
+        else NotificationSubject.incident
+    )
     for notification in notifications:
         if notification.subject != subject:
             continue
