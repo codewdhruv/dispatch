@@ -4,7 +4,7 @@ from jinja2 import Template
 
 from typing import List
 
-from dispatch.conversation.enums import ConversationButtonActions
+from dispatch.conversation.enums import ConversationButtonActions, ThreadButtonActions
 from dispatch.incident.enums import IncidentStatus
 from dispatch.case.enums import CaseStatus
 
