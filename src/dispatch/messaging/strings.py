@@ -28,7 +28,7 @@ class MessageType(DispatchEnum):
     incident_tactical_report = "incident-tactical-report"
     incident_task_list = "incident-task-list"
     incident_task_reminder = "incident-task-reminder"
-    case_notification = "case-notification"
+    case_created_notification = "case-created-notification"
 
 
 CASE_STATUS_DESCRIPTIONS = {
@@ -64,9 +64,9 @@ CASE_STATUS = {
     "status_mapping": CASE_STATUS_DESCRIPTIONS,
 }
 
-CASE_ASSIGNEE = {"title": "Assignee", "text": "{{description}}"}
+CASE_ASSIGNEE = {"text": "*Description* \n {{description}}"}
 
-CASE_NOTIFICATION_COMMON = [CASE_TITLE]
+CASE_NOTIFICATION_COMMON = [CASE_STATUS]
 
 CASE_DETAILS = [
     CASE_DESCRIPTION,
@@ -826,7 +826,4 @@ def render_message_template(message_template: List[dict], **kwargs):
 
         data.append(d)
 
-    from pprint import pprint
-
-    pprint(data)
     return data

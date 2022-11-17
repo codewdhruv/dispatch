@@ -6,14 +6,11 @@
 """
 import logging
 
-from dispatch.config import DISPATCH_UI_URL
+
 from dispatch.database.core import SessionLocal
 from dispatch.case.models import Case, CaseRead
+from dispatch.messaging import MessageType
 from dispatch.notification import service as notification_service
-from dispatch.messaging.strings import (
-    CASE_NOTIFICATION,
-    MessageType,
-)
 
 
 log = logging.getLogger(__name__)
@@ -21,32 +18,11 @@ log = logging.getLogger(__name__)
 
 def send_case_created_notifications(case: Case, db_session: SessionLocal):
     """Sends case created notifications."""
-    notification_template = CASE_NOTIFICATION.copy()
-
-    case_description = (
-        case.description if len(case.description) <= 500 else f"{case.description[:500]}..."
-    )
-
-    notification_kwargs = {
-        "name": case.name,
-        "status": case.status,
-        "type": case.case_type.name,
-        "description": case_description,
-        "severity": case.case_severity.name,
-        "severity_description": case.case_severity.description,
-        "priority": case.case_priority.name,
-        "priority_description": case.case_priority.description,
-        "assignee": case.assignee,
-        "case_id": case.id,
-        "case_url": f"{DISPATCH_UI_URL}/{case.project.organization.slug}/cases/{case.name}",
-        "organization_slug": case.project.organization.slug,
-    }
-
     notification_params = {
-        "text": "Case Notification",
-        "type": MessageType.case_notification,
-        "template": notification_template,
-        "kwargs": notification_kwargs,
+        "text": "Case Created",
+        "template": [],
+        "items": [case],
+        "type": MessageType.case_created_notification,
     }
 
     notification_service.filter_and_send(
