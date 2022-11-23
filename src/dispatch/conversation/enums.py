@@ -19,7 +19,3 @@ class ConversationButtonActions(DispatchEnum):
     provide_feedback = "provide-feedback"
     update_task_status = "update-task-status"
     monitor_link = "monitor-link"
-
-
-class ThreadButtonActions(DispatchEnum):
-    generic_link = "generic-link"

@@ -24,7 +24,6 @@ log = logging.getLogger(__name__)
 def get_template(message_type: MessageType):
     """Fetches the correct template based on message type."""
     template_map = {
-        MessageType.case_created_notification: (new_case_created_message, ""),
         MessageType.evergreen_reminder: (
             default_notification,
             EVERGREEN_REMINDER_DESCRIPTION,
