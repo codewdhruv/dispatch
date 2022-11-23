@@ -4,7 +4,7 @@ from jinja2 import Template
 
 from typing import List
 
-from dispatch.conversation.enums import ConversationButtonActions, ThreadButtonActions
+from dispatch.conversation.enums import ConversationButtonActions
 from dispatch.incident.enums import IncidentStatus
 from dispatch.case.enums import CaseStatus
 
@@ -37,50 +37,6 @@ CASE_STATUS_DESCRIPTIONS = {
     CaseStatus.escalated: "This case has been escalated to an incident, all further triage will take place in the incident context.",
     CaseStatus.closed: "This case requires no additional triage.",
 }
-
-CASE_TITLE = {
-    "title": "Title",
-    "text": "{{title}}",
-    "buttons": [
-        {
-            "button_text": "View",
-            "button_action": ThreadButtonActions.generic_link,
-            "button_value": "{{organization_slug}}-{{case_id}}",
-            "button_url": "{{case_url}}",
-        }
-    ],
-}
-
-CASE_PRIORITY = {
-    "title": "Priority - {{priority}}",
-    "text": "{{priority_description}}",
-}
-
-CASE_TYPE = {"title": "Type - {{type}}", "text": "{{type_description}}"}
-CASE_DESCRIPTION = {"title": "Description", "text": "{{description}}"}
-
-CASE_STATUS = {
-    "title": "Status - {{status}}",
-    "status_mapping": CASE_STATUS_DESCRIPTIONS,
-}
-
-CASE_ASSIGNEE = {"text": "*Description* \n {{description}}"}
-
-CASE_NOTIFICATION_COMMON = [CASE_STATUS]
-
-CASE_DETAILS = [
-    CASE_DESCRIPTION,
-    CASE_STATUS,
-    CASE_TYPE,
-    CASE_PRIORITY,
-    CASE_ASSIGNEE,
-]
-
-CASE_SIGNAL_DETAILS = []
-
-CASE_ACTIONS = []
-
-CASE_NOTIFICATION = CASE_NOTIFICATION_COMMON + CASE_DETAILS + CASE_SIGNAL_DETAILS + CASE_ACTIONS
 
 INCIDENT_STATUS_DESCRIPTIONS = {
     IncidentStatus.active: "This incident is under active investigation.",
@@ -150,6 +106,12 @@ Group for email notification purposes. All participants get added to it.""".repl
 
 INCIDENT_CONVERSATION_DESCRIPTION = """
 Private conversation for real-time discussion. All incident participants get added to it.
+""".replace(
+    "\n", " "
+).strip()
+
+CASE_CONVERSATION_DESCRIPTION = """
+Threaded conversation for real-time case discussion.
 """.replace(
     "\n", " "
 ).strip()

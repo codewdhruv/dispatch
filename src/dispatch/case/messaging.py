@@ -9,7 +9,7 @@ import logging
 
 from dispatch.database.core import SessionLocal
 from dispatch.case.models import Case, CaseRead
-from dispatch.messaging import MessageType
+from dispatch.messaging.strings import MessageType
 from dispatch.notification import service as notification_service
 
 
@@ -21,8 +21,9 @@ def send_case_created_notifications(case: Case, db_session: SessionLocal):
     notification_params = {
         "text": "Case Created",
         "template": [],
-        "items": [case],
+        "items": [],
         "type": MessageType.case_created_notification,
+        "kwargs": {"case": case},
     }
 
     notification_service.filter_and_send(

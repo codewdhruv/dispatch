@@ -115,6 +115,10 @@ class Case(Base, TimeStampMixin, ProjectMixin):
         "WorkflowInstance", backref="case", cascade="all, delete-orphan"
     )
 
+    conversation = relationship(
+        "Conversation", uselist=False, backref="case", cascade="all, delete-orphan"
+    )
+
     related_id = Column(Integer, ForeignKey("case.id"))
     related = relationship("Case", remote_side=[id], uselist=True, foreign_keys=[related_id])
 
