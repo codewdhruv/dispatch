@@ -5,7 +5,8 @@ from blockkit import (
 )
 
 from dispatch.case import service as case_service
-from dispatch.case.models import Case
+from dispatch.case import flows as case_flows
+from dispatch.case.models import Case, CaseUpdate
 from dispatch.project import service as project_service
 from dispatch.common.utils.cli import install_plugins
 
@@ -22,6 +23,8 @@ from dispatch.plugins.dispatch_slack.fields import (
 )
 
 from dispatch.plugins.dispatch_slack.models import SubjectMetadata
+from dispatch.plugins.dispatch_slack.fields import DefaultBlockIds
+from dispatch.plugins.dispatch_slack.modals.common import parse_submitted_form
 
 from dispatch.plugins.dispatch_slack.case.enums import (
     CaseEscalateActions,
@@ -31,16 +34,19 @@ from dispatch.plugins.dispatch_slack.case.enums import (
     CaseShortcutCallbacks,
 )
 
+from dispatch.plugins.dispatch_slack.messaging import create_case_notification
+
 from dispatch.plugins.dispatch_slack.bolt import (
     app,
-    action_context_middleware,
     db_middleware,
+    user_middleware,
+    action_context_middleware,
     button_context_middleware,
     message_context_middleware,
 )
 
 
-# @app.message("hello")
+@app.message("hello")
 def message_hello(client, context):
     from dispatch.plugins.dispatch_slack.decorators import get_default_organization_scope
 
@@ -164,6 +170,9 @@ def handle_project_select_action(ack, body, db_session, context, client):
 def handle_escalation_submission_event(ack, context, db_session, client, logger):
     ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
+    case_flows.case_escalated_status_flow(
+        case=case, orgnaization_slug=context["subject"].organization_slug, db_session=db_session
+    )
     blocks = create_case_notification(case=case, channel_id=context["subject"].channel_id)
     client.chat_update(
         blocks=blocks, ts=case.conversation.thread_id, channel=case.conversation.channel_id
@@ -199,10 +208,26 @@ def resolve_button_click(ack, body, db_session, context, client):
     client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.view(CaseResolveActions.submit, middleware=[action_context_middleware, db_middleware])
-def handle_resolve_submission_event(ack, context, db_session, client):
+@app.view(
+    CaseResolveActions.submit,
+    middleware=[action_context_middleware, db_middleware, user_middleware],
+)
+def handle_resolve_submission_event(ack, body, context, user, db_session, client):
     ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
+    data = parse_submitted_form(body["view"])
+
+    case_data = CaseUpdate(
+        title=data[DefaultBlockIds.title_input],
+        description=data[DefaultBlockIds.description_input],
+        resolution=data[DefaultBlockIds.resolution_input],
+        case_priority=data[DefaultBlockIds.case_priority_select],
+        case_type=data[
+            DefaultBlockIds.case_type_select,
+        ],
+    )
+
+    case_service.update(db_session=db_session, case=case, case_in=case_data, current_user=user)
     blocks = create_case_notification(case=case, channel_id=context["subject"].channel_id)
     client.chat_update(
         blocks=blocks, ts=case.conversation.thread_id, channel=case.conversation.channel_id
