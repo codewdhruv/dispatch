@@ -1,60 +1,52 @@
-from blockkit import (
-    Context,
-    MarkdownText,
-    Modal,
-)
+from blockkit import Context, MarkdownText, Modal
 
-from dispatch.case import service as case_service
 from dispatch.case import flows as case_flows
+from dispatch.case import service as case_service
+from dispatch.case.enums import CaseStatus
 from dispatch.case.models import Case, CaseUpdate
-from dispatch.project import service as project_service
 from dispatch.common.utils.cli import install_plugins
-
-from dispatch.plugins.dispatch_slack.fields import (
-    DefaultBlockIds,
-    title_input,
-    description_input,
-    project_select,
-    incident_priority_select,
-    incident_type_select,
-    resolution_input,
-    case_priority_select,
-    case_type_select,
+from dispatch.incident import flows as incident_flows
+from dispatch.plugins.dispatch_slack.bolt import (
+    action_context_middleware,
+    app,
+    button_context_middleware,
+    db_middleware,
+    user_middleware,
 )
-
-from dispatch.plugins.dispatch_slack.models import SubjectMetadata
-from dispatch.plugins.dispatch_slack.fields import DefaultBlockIds
-from dispatch.plugins.dispatch_slack.modals.common import parse_submitted_form
-
 from dispatch.plugins.dispatch_slack.case.enums import (
     CaseEscalateActions,
     CaseNotificationActions,
-    CaseResolveActions,
     CaseReportActions,
+    CaseResolveActions,
     CaseShortcutCallbacks,
 )
-
-from dispatch.plugins.dispatch_slack.messaging import create_case_notification
-
-from dispatch.plugins.dispatch_slack.bolt import (
-    app,
-    db_middleware,
-    user_middleware,
-    action_context_middleware,
-    button_context_middleware,
-    message_context_middleware,
+from dispatch.plugins.dispatch_slack.fields import (
+    DefaultBlockIds,
+    case_priority_select,
+    case_type_select,
+    description_input,
+    incident_priority_select,
+    incident_type_select,
+    project_select,
+    resolution_input,
+    title_input,
 )
+from dispatch.plugins.dispatch_slack.messaging import create_case_notification
+from dispatch.plugins.dispatch_slack.modals.common import parse_submitted_form
+from dispatch.plugins.dispatch_slack.models import SubjectMetadata
+from dispatch.project import service as project_service
 
 
-@app.message("hello")
-def message_hello(client, context):
+@app.message("case")
+async def message_hello(client, context):
+    from dispatch.conversation.models import Conversation
     from dispatch.plugins.dispatch_slack.decorators import get_default_organization_scope
 
     install_plugins()
     db_session = get_default_organization_scope()
     case = db_session.query(Case).first()
 
-    result = client.chat_postMessage(
+    result = await client.chat_postMessage(
         blocks=create_case_notification(case=case, channel_id=context["channel_id"]),
         channel=context["channel_id"],
         metadata={
@@ -69,17 +61,48 @@ def message_hello(client, context):
         },
     )
 
-    client.chat_postMessage(
+    await client.chat_postMessage(
         text="All real-time case collaboration should be captured in this thread.",
         channel=context["channel_id"],
         thread_ts=result["ts"],
     )
 
-    return result["ts"]
+    case.conversation = Conversation(channel_id=context["channel_id"], thread_id=result["ts"])
+    db_session.commit()
+
+    await result["ts"]
 
 
-@app.action(CaseNotificationActions.escalate, middleware=[button_context_middleware, db_middleware])
-def escalate_button_click(ack, body, say, client, db_session, context):
+@app.action(CaseNotificationActions.reopen, middleware=[button_context_middleware, db_middleware])
+async def reopen_button_click(
+    ack,
+    client,
+    context,
+    db_session,
+):
+    ack()
+    case = case_service.get(db_session=db_session, case_id=context["subject"].id)
+    case.status = CaseStatus.triage
+    db_session.commit()
+
+    # update case message
+    blocks = create_case_notification(case=case, channel_id=context["subject"].channel_id)
+    await client.chat_update(
+        blocks=blocks, ts=case.conversation.thread_id, channel=case.conversation.channel_id
+    )
+
+
+@app.action(
+    CaseNotificationActions.escalate,
+    middleware=[button_context_middleware, db_middleware, user_middleware],
+)
+async def escalate_button_click(
+    ack,
+    body,
+    client,
+    context,
+    db_session,
+):
     ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
     blocks = [
@@ -108,13 +131,19 @@ def escalate_button_click(ack, body, say, client, db_session, context):
         callback_id=CaseEscalateActions.submit,
         private_metadata=context["subject"].json(),
     ).build()
-    client.views_open(trigger_id=body["trigger_id"], view=modal)
+    await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
 @app.action(
     CaseEscalateActions.project_select, middleware=[action_context_middleware, db_middleware]
 )
-def handle_project_select_action(ack, body, db_session, context, client):
+async def handle_project_select_action(
+    ack,
+    body,
+    client,
+    context,
+    db_session,
+):
     ack()
     values = body["view"]["state"]["values"]
 
@@ -158,7 +187,7 @@ def handle_project_select_action(ack, body, db_session, context, client):
         private_metadata=context["subject"].json(),
     ).build()
 
-    client.views_update(
+    await client.views_update(
         view_id=body["view"]["id"],
         hash=body["view"]["hash"],
         trigger_id=body["trigger_id"],
@@ -167,34 +196,71 @@ def handle_project_select_action(ack, body, db_session, context, client):
 
 
 @app.view(CaseEscalateActions.submit, middleware=[action_context_middleware, db_middleware])
-def handle_escalation_submission_event(ack, context, db_session, client, logger):
+async def handle_escalation_submission_event(
+    ack,
+    client,
+    context,
+    db_session,
+    user,
+):
     ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
-    case_flows.case_escalated_status_flow(
-        case=case, orgnaization_slug=context["subject"].organization_slug, db_session=db_session
-    )
+    case.status = CaseStatus.escalated
+    db_session.commit()
+
     blocks = create_case_notification(case=case, channel_id=context["subject"].channel_id)
-    client.chat_update(
+    await client.chat_update(
         blocks=blocks, ts=case.conversation.thread_id, channel=case.conversation.channel_id
     )
+    await client.chat_postMessage(
+        text="This case has been escalated to an incident all further triage work will take place in the incident channel.",
+        channel=case.conversation.channel_id,
+        thread_ts=case.conversation.thread_id,
+    )
+    incident = case_flows.case_escalated_status_flow(
+        case=case, organization_slug=context["subject"].organization_slug, db_session=db_session
+    )
+
+    incident_flows.add_participants_to_conversation(
+        db_session=db_session, participant_emails=[user.email], incident=incident
+    )
 
 
-@app.action(CaseNotificationActions.resolve, middleware=[button_context_middleware, db_middleware])
-def resolve_button_click(ack, body, db_session, context, client):
+@app.action(
+    CaseNotificationActions.join_incident,
+    middleware=[button_context_middleware, db_middleware, user_middleware],
+)
+async def join_incident_button_click(ack, body, user, db_session, context, client):
+    ack()
+    case = case_service.get(db_session=db_session, case_id=context["subject"].id)
+
+    # TODO handle case there are multiple related incidents
+    incident_flows.add_participants_to_conversation(
+        db_session=db_session, participant_emails=[user.email], incident=case.incidents[0]
+    )
+
+
+@app.action(CaseNotificationActions.edit, middleware=[button_context_middleware, db_middleware])
+async def edit_button_click(ack, body, db_session, context, client):
     ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
 
     blocks = [
-        Context(elements=[MarkdownText(text="Accept the defaults or adjust as needed.")]),
+        Context(elements=[MarkdownText(text="Edit the case as needed.")]),
         title_input(initial_value=case.title),
         description_input(initial_value=case.description),
-        resolution_input(),
+        resolution_input(initial_value=case.resolution),
         case_type_select(
             db_session=db_session,
             initial_option=case.case_type.name,
             project_id=case.project.id,
         ),
-        case_priority_select(db_session=db_session, project_id=case.project.id, optional=True),
+        case_priority_select(
+            db_session=db_session,
+            initial_option=case.case_priority.name,
+            project_id=case.project.id,
+            optional=True,
+        ),
     ]
 
     modal = Modal(
@@ -205,45 +271,79 @@ def resolve_button_click(ack, body, db_session, context, client):
         callback_id=CaseResolveActions.submit,
         private_metadata=context["subject"].json(),
     ).build()
-    client.views_open(trigger_id=body["trigger_id"], view=modal)
+    await client.views_open(trigger_id=body["trigger_id"], view=modal)
+
+
+@app.action(CaseNotificationActions.resolve, middleware=[button_context_middleware, db_middleware])
+async def resolve_button_click(ack, body, db_session, context, client):
+    ack()
+    case = case_service.get(db_session=db_session, case_id=context["subject"].id)
+
+    blocks = [
+        Context(elements=[MarkdownText(text="Accept the defaults or adjust as needed.")]),
+        title_input(initial_value=case.title),
+        description_input(initial_value=case.description),
+        resolution_input(initial_value=case.resolution),
+        case_type_select(
+            db_session=db_session,
+            initial_option=case.case_type.name,
+            project_id=case.project.id,
+        ),
+        case_priority_select(
+            db_session=db_session,
+            initial_option=case.case_priority.name,
+            project_id=case.project.id,
+            optional=True,
+        ),
+    ]
+
+    modal = Modal(
+        title="Resolve Case",
+        blocks=blocks,
+        submit="Save",
+        close="Close",
+        callback_id=CaseResolveActions.submit,
+        private_metadata=context["subject"].json(),
+    ).build()
+    await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
 @app.view(
     CaseResolveActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware],
 )
-def handle_resolve_submission_event(ack, body, context, user, db_session, client):
+async def handle_resolve_submission_event(ack, body, context, payload, user, db_session, client):
     ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
     data = parse_submitted_form(body["view"])
 
-    case_data = CaseUpdate(
+    case_priority = None
+    if data.get(DefaultBlockIds.case_priority_select):
+        case_priority = {"name": data[DefaultBlockIds.case_priority_select]["name"]}
+
+    case_type = None
+    if data.get(DefaultBlockIds.case_type_select):
+        case_type = {"name": data[DefaultBlockIds.case_type_select]["value"]}
+
+    case_in = CaseUpdate(
         title=data[DefaultBlockIds.title_input],
         description=data[DefaultBlockIds.description_input],
         resolution=data[DefaultBlockIds.resolution_input],
-        case_priority=data[DefaultBlockIds.case_priority_select],
-        case_type=data[
-            DefaultBlockIds.case_type_select,
-        ],
+        status=CaseStatus.closed,
+        visibility=case.visibility,
+        case_priority=case_priority,
+        case_type=case_type,
     )
 
-    case_service.update(db_session=db_session, case=case, case_in=case_data, current_user=user)
+    case = case_service.update(db_session=db_session, case=case, case_in=case_in, current_user=user)
     blocks = create_case_notification(case=case, channel_id=context["subject"].channel_id)
-    client.chat_update(
+    await client.chat_update(
         blocks=blocks, ts=case.conversation.thread_id, channel=case.conversation.channel_id
     )
 
 
-@app.action(
-    CaseNotificationActions.reassign, middleware=[message_context_middleware, db_middleware]
-)
-def handle_reassign_action(ack, body, context, db_session, logger):
-    ack()
-    logger.info(body)
-
-
 @app.shortcut(CaseShortcutCallbacks.report, middleware=[db_middleware])
-def report_issue(ack, shortcut, body, context, db_session, client):
+async def report_issue(ack, shortcut, body, context, db_session, client):
     ack()
     initial_description = None
     if body.get("message"):
@@ -271,11 +371,11 @@ def report_issue(ack, shortcut, body, context, db_session, client):
         close="Close",
         callback_id=CaseReportActions.submit,
     ).build()
-    client.views_open(trigger_id=shortcut["trigger_id"], view=modal)
+    await client.views_open(trigger_id=shortcut["trigger_id"], view=modal)
 
 
 @app.action(CaseReportActions.project_select, middleware=[db_middleware])
-def handle_report_project_select_action(ack, body, db_session, context, client):
+async def handle_report_project_select_action(ack, body, db_session, context, client):
     ack()
     values = body["view"]["state"]["values"]
 
@@ -319,7 +419,7 @@ def handle_report_project_select_action(ack, body, db_session, context, client):
         private_metadata=context["subject"].json(),
     ).build()
 
-    client.views_update(
+    await client.views_update(
         view_id=body["view"]["id"],
         hash=body["view"]["hash"],
         trigger_id=body["trigger_id"],
@@ -328,7 +428,7 @@ def handle_report_project_select_action(ack, body, db_session, context, client):
 
 
 @app.view(CaseReportActions.submit, middleware=[db_middleware])
-def handle_report_submission_event(ack, body, context, db_session, client, logger):
+async def handle_report_submission_event(ack, body, context, db_session, client, logger):
     ack()
 
     # create the case

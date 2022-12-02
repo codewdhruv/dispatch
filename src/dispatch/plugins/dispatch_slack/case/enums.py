@@ -3,8 +3,14 @@ from dispatch.enums import DispatchEnum
 
 class CaseNotificationActions(DispatchEnum):
     escalate = "case-notification-escalate"
-    reassign = "case-notification-reassign"
     resolve = "case-notification-resolve"
+    reopen = "case-notification-reopen"
+    edit = "case-notification-edit"
+    join_incident = "case-notification-join-incident"
+
+
+class CaseEditActions(DispatchEnum):
+    submit = "case-notification-edit-submit"
 
 
 class CaseResolveActions(DispatchEnum):

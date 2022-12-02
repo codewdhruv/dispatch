@@ -5,10 +5,6 @@ from typing import Optional
 from sqlalchemy import Column, String, Integer, ForeignKey
 
 from dispatch.database.core import Base
-from dispatch.messaging.strings import (
-    INCIDENT_CONVERSATION_DESCRIPTION,
-    CASE_CONVERSATION_DESCRIPTION,
-)
 from dispatch.models import ResourceBase, ResourceMixin
 
 

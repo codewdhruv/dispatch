@@ -30,8 +30,15 @@ def get_all(*, db_session) -> List[Optional[Workflow]]:
     return db_session.query(Workflow)
 
 
-def get_enabled(*, db_session) -> List[Optional[Workflow]]:
+def get_enabled(*, db_session, project_id: int = None) -> List[Optional[Workflow]]:
     """Fetches all enabled workflows."""
+    if project_id:
+        return (
+            db_session.query(Workflow)
+            .filter(Workflow.enabled == true())
+            .filter(Workflow.project_id == project_id)
+            .all()
+        )
     return db_session.query(Workflow).filter(Workflow.enabled == true()).all()
 
 

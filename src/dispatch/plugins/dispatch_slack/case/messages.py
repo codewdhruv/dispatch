@@ -5,10 +5,10 @@ from blockkit import (
     Divider,
     Message,
     Section,
-    UsersSelect,
 )
 
 from dispatch.config import DISPATCH_UI_URL
+from dispatch.case.enums import CaseStatus
 from dispatch.case.models import Case
 from dispatch.plugins.dispatch_slack.models import SubjectMetadata
 from dispatch.plugins.dispatch_slack.case.enums import (
@@ -30,42 +30,15 @@ def create_case_notification(case: Case, channel_id: str):
             text=f"*Description* \n {case.description} Additional information is available in the <{case.case_document.weblink}|case document>."
         ),
         Section(
-            text="*Assignee*",
-            accessory=UsersSelect(
-                initial_user=case.assignee.email,
-                placeholder="Select Assignee",
-                action_id=CaseNotificationActions.reassign,
-            ),
-        ),
-        Section(
             fields=[
+                f"*Assignee* \n {case.assignee}",
+                f"*Status* \n {case.status}",
                 f"*Severity* \n {case.case_severity.name}",
                 f"*Type* \n {case.case_type.name}",
                 f"*Priority* \n {case.case_priority.name}",
             ]
         ),
     ]
-
-    if case.signal_instances:
-        blocks.extend(
-            [
-                Divider(),
-                Context(elements=["*Signal Details*"]),
-            ]
-        )
-        for s in case.signal_instances:
-            fields = []
-            # TODO filter for only *important* 10 fields
-            # TODO hide duplicates
-            for k, v in s.raw.items():
-                fields.append(f"*{k.strip()}* \n {v.strip()}")
-
-            blocks.extend(
-                [
-                    Section(fields=fields[:10]),
-                    Divider(),
-                ]
-            )
 
     button_metadata = SubjectMetadata(
         type="case",
@@ -75,26 +48,84 @@ def create_case_notification(case: Case, channel_id: str):
         channel_id=channel_id,
     ).json()
 
-    # always add actions
-    blocks.extend(
-        [
-            Actions(
-                elements=[
-                    Button(
-                        text="Resolve",
-                        action_id=CaseNotificationActions.resolve,
-                        style="primary",
-                        value=button_metadata,
-                    ),
-                    Button(
-                        text="Escalate",
-                        action_id=CaseNotificationActions.escalate,
-                        style="danger",
-                        value=button_metadata,
-                    ),
+    if case.status == CaseStatus.escalated:
+        blocks.extend(
+            [
+                Actions(
+                    elements=[
+                        Button(
+                            text="Join Incident",
+                            action_id=CaseNotificationActions.join_incident,
+                            style="primary",
+                            value=button_metadata,
+                        )
+                    ]
+                )
+            ]
+        )
+
+    elif case.status == CaseStatus.closed:
+        blocks.extend(
+            [
+                Actions(
+                    elements=[
+                        Button(
+                            text="Re-open",
+                            action_id=CaseNotificationActions.reopen,
+                            style="primary",
+                            value=button_metadata,
+                        )
+                    ]
+                )
+            ]
+        )
+    else:
+        if case.signal_instances:
+            blocks.extend(
+                [
+                    Divider(),
+                    Context(elements=["*Signal Details*"]),
                 ]
-            ),
-        ]
-    )
+            )
+
+            for s in case.signal_instances:
+                fields = []
+                # TODO filter for only *important* 10 fields
+                # TODO hide duplicates
+                for k, v in s.raw.items():
+                    fields.append(f"*{k.strip()}* \n {v.strip()}")
+
+                blocks.extend(
+                    [
+                        Section(fields=fields[:10]),
+                        Divider(),
+                    ]
+                )
+            blocks.extend(
+                [
+                    Actions(
+                        elements=[
+                            Button(
+                                text="Edit",
+                                action_id=CaseNotificationActions.edit,
+                                style="primary",
+                                value=button_metadata,
+                            ),
+                            Button(
+                                text="Resolve",
+                                action_id=CaseNotificationActions.resolve,
+                                style="primary",
+                                value=button_metadata,
+                            ),
+                            Button(
+                                text="Escalate",
+                                action_id=CaseNotificationActions.escalate,
+                                style="danger",
+                                value=button_metadata,
+                            ),
+                        ]
+                    )
+                ]
+            )
 
     return Message(blocks=blocks).build()["blocks"]

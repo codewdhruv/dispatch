@@ -15,6 +15,7 @@ def get_by_channel_id_ignoring_channel_type(db_session, channel_id: str) -> Opti
     and update the channel id in the database if the channel type has changed."""
     conversation = (
         db_session.query(Conversation)
+        .filter(Conversation.incident_id != None)
         .filter(Conversation.channel_id.contains(channel_id[1:]))
         .one_or_none()
     )
