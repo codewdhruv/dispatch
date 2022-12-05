@@ -12,6 +12,7 @@ from dispatch.plugins.dispatch_slack.bolt import (
     button_context_middleware,
     db_middleware,
     user_middleware,
+    modal_submit_middleware,
 )
 from dispatch.plugins.dispatch_slack.case.enums import (
     CaseEscalateActions,
@@ -32,7 +33,6 @@ from dispatch.plugins.dispatch_slack.fields import (
     title_input,
 )
 from dispatch.plugins.dispatch_slack.messaging import create_case_notification
-from dispatch.plugins.dispatch_slack.modals.common import parse_submitted_form
 from dispatch.plugins.dispatch_slack.models import SubjectMetadata
 from dispatch.project import service as project_service
 
@@ -40,7 +40,7 @@ from dispatch.project import service as project_service
 @app.message("case")
 async def message_hello(client, context):
     from dispatch.conversation.models import Conversation
-    from dispatch.plugins.dispatch_slack.decorators import get_default_organization_scope
+    from dispatch.plugins.dispatch_slack.service import get_default_organization_scope
 
     install_plugins()
     db_session = get_default_organization_scope()
@@ -310,25 +310,26 @@ async def resolve_button_click(ack, body, db_session, context, client):
 
 @app.view(
     CaseResolveActions.submit,
-    middleware=[action_context_middleware, db_middleware, user_middleware],
+    middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
-async def handle_resolve_submission_event(ack, body, context, payload, user, db_session, client):
+async def handle_resolve_submission_event(
+    ack, body, context, payload, user, form_data, db_session, client
+):
     ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
-    data = parse_submitted_form(body["view"])
 
     case_priority = None
-    if data.get(DefaultBlockIds.case_priority_select):
-        case_priority = {"name": data[DefaultBlockIds.case_priority_select]["name"]}
+    if form_data.get(DefaultBlockIds.case_priority_select):
+        case_priority = {"name": form_data[DefaultBlockIds.case_priority_select]["name"]}
 
     case_type = None
-    if data.get(DefaultBlockIds.case_type_select):
-        case_type = {"name": data[DefaultBlockIds.case_type_select]["value"]}
+    if form_data.get(DefaultBlockIds.case_type_select):
+        case_type = {"name": form_data[DefaultBlockIds.case_type_select]["value"]}
 
     case_in = CaseUpdate(
-        title=data[DefaultBlockIds.title_input],
-        description=data[DefaultBlockIds.description_input],
-        resolution=data[DefaultBlockIds.resolution_input],
+        title=form_data[DefaultBlockIds.title_input],
+        description=form_data[DefaultBlockIds.description_input],
+        resolution=form_data[DefaultBlockIds.resolution_input],
         status=CaseStatus.closed,
         visibility=case.visibility,
         case_priority=case_priority,
