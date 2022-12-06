@@ -1,4 +1,4 @@
-from blockkit import Context, MarkdownText, Modal
+from blockkit import Context, MarkdownText, Modal, Input, UsersSelect
 
 from dispatch.case import flows as case_flows
 from dispatch.case import service as case_service
@@ -35,6 +35,25 @@ from dispatch.plugins.dispatch_slack.fields import (
 from dispatch.plugins.dispatch_slack.messaging import create_case_notification
 from dispatch.plugins.dispatch_slack.models import SubjectMetadata
 from dispatch.project import service as project_service
+
+
+def assignee_select(
+    placeholder: str = "Select Assignee",
+    initial_user: str = None,
+    action_id: str = None,
+    block_id: str = None,
+    label: str = "Assignee",
+    **kwargs,
+):
+    """Builds a assignee select block."""
+    return Input(
+        element=UsersSelect(
+            placeholder=placeholder, action_id=action_id, initial_user=initial_user
+        ),
+        block_id=block_id,
+        label=label,
+        **kwargs,
+    )
 
 
 @app.message("case")
@@ -80,7 +99,7 @@ async def reopen_button_click(
     context,
     db_session,
 ):
-    ack()
+    await ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
     case.status = CaseStatus.triage
     db_session.commit()
@@ -103,7 +122,7 @@ async def escalate_button_click(
     context,
     db_session,
 ):
-    ack()
+    await ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
     blocks = [
         Context(elements=[MarkdownText(text="Accept the defaults or adjust as needed.")]),
@@ -160,6 +179,7 @@ async def handle_project_select_action(
         Context(elements=[MarkdownText(text="Accept the defaults or adjust as needed.")]),
         title_input(),
         description_input(),
+        assignee_select(),
         project_select(
             db_session=db_session,
             initial_option=selected_project_name,
@@ -242,14 +262,17 @@ async def join_incident_button_click(ack, body, user, db_session, context, clien
 
 @app.action(CaseNotificationActions.edit, middleware=[button_context_middleware, db_middleware])
 async def edit_button_click(ack, body, db_session, context, client):
-    ack()
+    await ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
+
+    assignee_initial_user = (await client.users_lookupByEmail(email=case.assignee.email))["id"]
 
     blocks = [
         Context(elements=[MarkdownText(text="Edit the case as needed.")]),
         title_input(initial_value=case.title),
         description_input(initial_value=case.description),
         resolution_input(initial_value=case.resolution),
+        assignee_select(initial_user=assignee_initial_user),
         case_type_select(
             db_session=db_session,
             initial_option=case.case_type.name,
@@ -276,14 +299,17 @@ async def edit_button_click(ack, body, db_session, context, client):
 
 @app.action(CaseNotificationActions.resolve, middleware=[button_context_middleware, db_middleware])
 async def resolve_button_click(ack, body, db_session, context, client):
-    ack()
+    await ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
+
+    assignee_initial_user = (await client.users_lookupByEmail(email=case.assignee.email))["id"]
 
     blocks = [
         Context(elements=[MarkdownText(text="Accept the defaults or adjust as needed.")]),
         title_input(initial_value=case.title),
         description_input(initial_value=case.description),
         resolution_input(initial_value=case.resolution),
+        assignee_select(initial_user=assignee_initial_user),
         case_type_select(
             db_session=db_session,
             initial_option=case.case_type.name,

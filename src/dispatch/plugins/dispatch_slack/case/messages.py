@@ -101,31 +101,31 @@ def create_case_notification(case: Case, channel_id: str):
                         Divider(),
                     ]
                 )
-            blocks.extend(
-                [
-                    Actions(
-                        elements=[
-                            Button(
-                                text="Edit",
-                                action_id=CaseNotificationActions.edit,
-                                style="primary",
-                                value=button_metadata,
-                            ),
-                            Button(
-                                text="Resolve",
-                                action_id=CaseNotificationActions.resolve,
-                                style="primary",
-                                value=button_metadata,
-                            ),
-                            Button(
-                                text="Escalate",
-                                action_id=CaseNotificationActions.escalate,
-                                style="danger",
-                                value=button_metadata,
-                            ),
-                        ]
-                    )
-                ]
-            )
+        blocks.extend(
+            [
+                Actions(
+                    elements=[
+                        Button(
+                            text="Edit",
+                            action_id=CaseNotificationActions.edit,
+                            style="primary",
+                            value=button_metadata,
+                        ),
+                        Button(
+                            text="Resolve",
+                            action_id=CaseNotificationActions.resolve,
+                            style="primary",
+                            value=button_metadata,
+                        ),
+                        Button(
+                            text="Escalate",
+                            action_id=CaseNotificationActions.escalate,
+                            style="danger",
+                            value=button_metadata,
+                        ),
+                    ]
+                )
+            ]
+        )
 
     return Message(blocks=blocks).build()["blocks"]

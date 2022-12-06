@@ -2250,7 +2250,7 @@ async def handle_list_tasks_command(ack, user, body, respond, context, db_sessio
     blocks = []
 
     caller_only = False
-    if body["command"] == SlackConversationConfiguration.slack_command_list_my_tasks:
+    if body["command"] == context["config"].slack_command_list_my_tasks:
         caller_only = True
 
     for status in TaskStatus:
@@ -2511,7 +2511,7 @@ async def handle_member_left_channel(ack, context, db_session, user):
 )
 async def handle_thread_creation(ack, respond, client, context):
     """Sends the user an ephemeral message if they use threads."""
-    if not SlackConversationConfiguration.ban_threads:
+    if not context["config"].ban_threads:
         return
 
     message = "Please refrain from using threads in incident related channels. Threads make it harder for incident participants to maintain context."
@@ -2882,7 +2882,7 @@ async def handle_report_executive_command(ack, body, client, respond, context, d
         Context(
             elements=[
                 MarkdownText(
-                    text=f"Use {SlackConversationConfiguration.slack_command_update_notifications_group} to update the list of recipients of this report."
+                    text=f"Use {context['config'].slack_command_update_notifications_group} to update the list of recipients of this report."
                 )
             ]
         ),
