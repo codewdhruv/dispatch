@@ -31,7 +31,7 @@ def create_case_notification(case: Case, channel_id: str):
         ),
         Section(
             fields=[
-                f"*Assignee* \n {case.assignee}",
+                f"*Assignee* \n {case.assignee.email}",
                 f"*Status* \n {case.status}",
                 f"*Severity* \n {case.case_severity.name}",
                 f"*Type* \n {case.case_type.name}",

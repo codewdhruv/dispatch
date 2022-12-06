@@ -6,9 +6,9 @@ from dispatch.case.enums import CaseStatus
 from dispatch.case.models import Case, CaseUpdate
 from dispatch.common.utils.cli import install_plugins
 from dispatch.incident import flows as incident_flows
-from dispatch.plugins.dispatch_slack.bolt import (
+from dispatch.plugins.dispatch_slack.bolt import app
+from dispatch.plugins.dispatch_slack.middleware import (
     action_context_middleware,
-    app,
     button_context_middleware,
     db_middleware,
     user_middleware,
@@ -266,7 +266,7 @@ async def edit_button_click(ack, body, db_session, context, client):
     modal = Modal(
         title="Resolve Case",
         blocks=blocks,
-        submit="Save",
+        submit="Update",
         close="Close",
         callback_id=CaseResolveActions.submit,
         private_metadata=context["subject"].json(),
@@ -300,7 +300,7 @@ async def resolve_button_click(ack, body, db_session, context, client):
     modal = Modal(
         title="Resolve Case",
         blocks=blocks,
-        submit="Save",
+        submit="Resolve",
         close="Close",
         callback_id=CaseResolveActions.submit,
         private_metadata=context["subject"].json(),

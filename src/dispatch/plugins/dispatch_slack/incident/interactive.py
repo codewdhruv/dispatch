@@ -65,6 +65,7 @@ from dispatch.plugins.dispatch_slack.fields import (
     static_select_block,
     tag_multi_select,
     title_input,
+    tag_multi_select,
 )
 from dispatch.plugins.dispatch_slack.incident.enums import (
     AddTimelineEventActions,
@@ -74,6 +75,8 @@ from dispatch.plugins.dispatch_slack.incident.enums import (
     EngageOncallActions,
     EngageOncallBlockIds,
     IncidentReportActions,
+    IncidentReportBlockIds,
+    IncidentReportActionIds,
     IncidentUpdateActions,
     IncidentUpdateBlockIds,
     LinkMonitorActionIds,
@@ -2045,7 +2048,7 @@ async def handle_report_incident_project_select_action(
 
 
 @app.action(
-    AddTimelineActions.submit,
+    AddTimelineEventActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
 async def handle_add_timeline_submission_event(
@@ -2084,10 +2087,6 @@ async def handle_add_timeline_submission_event(
     respond("Event succesfully added to timeline.", response_type="ephemeral")
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_list_incidents,
-    middleware=[command_context_middleware, db_middleware],
-)
 async def handle_list_incidents_command(ack, body, respond, db_session, context):
     """Handles the list incidents command."""
     ack()
@@ -2164,11 +2163,7 @@ async def handle_list_incidents_command(ack, body, respond, db_session, context)
     respond(text="Incident List", blocks=blocks, response_type="ephemeral")
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_list_participants,
-    middleware=[command_context_middleware, db_middleware],
-)
-async def handle_list_participants(ack, body, respond, client, db_session, context):
+async def handle_list_participants_command(ack, body, respond, client, db_session, context):
     """Handles list participants command."""
     blocks = [Section(text="*Incident Participants*")]
     participants = participant_service.get_all_by_incident_id(
@@ -2249,15 +2244,7 @@ def filter_tasks_by_assignee_and_creator(tasks: List[Task], by_assignee: str, by
     return filtered_tasks
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_list_tasks,
-    middleware=[command_context_middleware, db_middleware],
-)
-@app.command(
-    SlackConversationConfiguration.slack_command_list_my_tasks,
-    middleware=[command_context_middleware, db_middleware],
-)
-async def handle_list_tasks(ack, user, body, respond, context, db_session):
+async def handle_list_tasks_command(ack, user, body, respond, context, db_session):
     """Handles the list tasks command."""
     ack()
     blocks = []
@@ -2308,11 +2295,7 @@ async def handle_list_tasks(ack, user, body, respond, context, db_session):
     respond(text="Incident Task List", blocks=blocks, response_type="ephermeral")
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_list_resources,
-    middleware=[command_context_middleware, db_middleware],
-)
-async def handle_list_resources(ack, body, respond, client, db_session, context, logger):
+async def handle_list_resources_command(ack, body, respond, client, db_session, context, logger):
     """Handles the list resources command."""
     ack()
     incident = incident_service.get(db_session=db_session, incident_id=context["subject"].id)
@@ -2372,8 +2355,7 @@ async def handle_list_resources(ack, body, respond, client, db_session, context,
     respond(text="Incident Resources Message", blocks=blocks, response_type="ephemeral")
 
 
-@app.event(SlackConversationConfiguration.slack_timeline_event_reaction, middleware=[db_middleware])
-def handle_timeline_added_event(ack, body, client, context, db_session):
+async def handle_timeline_added_event(ack, body, client, context, db_session):
     """Handles an event where a reaction is added to a message."""
     conversation_id = context["channel_id"]
     message_ts = context["ts"]
@@ -2411,7 +2393,7 @@ def handle_timeline_added_event(ack, body, client, context, db_session):
 @app.message(
     {"type": "message"}, middleware=[message_context_middleware, user_middleware, db_middleware]
 )
-def handle_participant_role_activity(ack, db_session, context, user):
+async def handle_participant_role_activity(ack, db_session, context, user):
     """Increments the participant role's activity counter."""
     ack()
 
@@ -2451,7 +2433,9 @@ def handle_participant_role_activity(ack, db_session, context, user):
                     )
 
 
-@app.message(middleware=[message_context_middleware, user_middleware, db_middleware])
+@app.message(
+    {"type": "message"}, middleware=[message_context_middleware, user_middleware, db_middleware]
+)
 async def handle_after_hours_message(ack, context, body, client, respond, user, db_session):
     """Notifies the user that this incident is current in after hours mode."""
     # we ignore user channel and group join messages
@@ -2534,7 +2518,7 @@ async def handle_thread_creation(ack, respond, client, context):
     respond(text=message, response_type="ephemeral")
 
 
-@app.message(middleware=[message_context_middleware, db_middleware])
+@app.message({"type": "message"}, middleware=[message_context_middleware, db_middleware])
 async def handle_message_tagging(ack, db_session, context):
     """Looks for incident tags in incident messages."""
 
@@ -2558,7 +2542,7 @@ async def handle_message_tagging(ack, db_session, context):
         db_session.commit()
 
 
-@app.message(middleware=[message_context_middleware, db_middleware])
+@app.message({"type": "message"}, middleware=[message_context_middleware, db_middleware])
 async def handle_message_monitor(ack, respond, body, context, db_session):
     """Looks strings that are available for monitoring (usually links)."""
     ack()
@@ -2627,10 +2611,6 @@ async def handle_message_monitor(ack, respond, body, context, db_session):
                     respond(blocks=blocks, response_type="ephemeral")
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_update_participant,
-    middleware=[command_context_middleware, db_middleware],
-)
 async def handle_update_participant_command(ack, respond, body, context, db_session, client):
     """Handles the update participant command."""
     ack()
@@ -2671,10 +2651,6 @@ async def handle_update_participant_command(ack, respond, body, context, db_sess
     await client.view_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_update_notifications_group,
-    middleware=[command_context_middleware, db_middleware],
-)
 async def handle_update_notifications_group_command(ack, body, context, client, db_session):
     """Handles the update notification group command."""
     ack()
@@ -2722,10 +2698,6 @@ async def handle_update_notifications_group_command(ack, body, context, client, 
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_assign_role,
-    middleware=[command_context_middleware],
-)
 async def handle_assign_role_command(ack, context, body, client):
     """Handles the assign role command."""
     ack()
@@ -2757,10 +2729,6 @@ async def handle_assign_role_command(ack, context, body, client):
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_engage_oncall,
-    middleware=[command_context_middleware, db_middleware],
-)
 async def handle_engage_oncall_command(ack, respond, context, body, client, db_session):
     """Handles the engage oncall command."""
     ack()
@@ -2810,10 +2778,6 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_report_tactical,
-    middleware=[command_context_middleware, db_middleware],
-)
 async def handle_report_tactical_command(ack, client, respond, context, db_session, body):
     """Handles the report tactical command."""
     ack()
@@ -2873,11 +2837,7 @@ async def handle_report_tactical_command(ack, client, respond, context, db_sessi
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_report_executive,
-    middleware=[command_context_middleware, db_middleware],
-)
-async def handle_executive_report_command(ack, body, client, respond, context, db_session):
+async def handle_report_executive_command(ack, body, client, respond, context, db_session):
     """Handles executive report command."""
     ack()
 
@@ -2940,10 +2900,6 @@ async def handle_executive_report_command(ack, body, client, respond, context, d
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_update_incident,
-    middleware=[command_context_middleware, db_middleware, user_middleware],
-)
 async def handle_update_incident_command(ack, body, client, context, db_session):
     """Creates the incident update modal."""
     ack()
@@ -2975,9 +2931,9 @@ async def handle_update_incident_command(ack, body, client, context, db_session)
             initial_option=incident.incident_severity.name,
             project_id=incident.project.id,
         ),
-        incident_tags_multi_select(
-            db_session=db_session,
-            project_id=incident.project.id,
+        tag_multi_select(
+            action_id=IncidentUpdateActionIds.tags,
+            block_id=IncidentUpdateBlockIds.tags,
             initial_options=[t.name for t in incident.tags],
         ),
     ]
@@ -3038,10 +2994,7 @@ async def handle_project_select_action(ack, body, client, context, db_session):
             initial_option=incident.incident_severity.name,
             project_id=project.id,
         ),
-        incident_tags_multi_select(
-            db_session=db_session,
-            db_session=db_session,
-            project_id=project.id,
+        tag_multi_select(
             initial_options=[t.name for t in incident.tags],
         ),
     ]
@@ -3063,9 +3016,6 @@ async def handle_project_select_action(ack, body, client, context, db_session):
     )
 
 
-@app.command(
-    SlackConversationConfiguration.slack_command_report_incident, middleware=[db_middleware]
-)
 async def handle_report_incident_command(ack, body, context, db_session, client):
     """Handles the report incident command."""
 
@@ -3083,6 +3033,10 @@ async def handle_report_incident_command(ack, body, context, db_session, client)
             db_session=db_session,
             action_id=IncidentReportActions.project_select,
             dispatch_action=True,
+        ),
+        tag_multi_select(
+            action_id=IncidentReportActionIds.tags,
+            block_id=IncidentReportBlockIds.tags,
         ),
     ]
 
