@@ -5,7 +5,7 @@ class RestrictedCommand:
     def __init__(self, allowed_roles: list = []):
         self.allowed_roles = allowed_roles
 
-    def __call__(self, body, next, context, respond, db_session, user, logger):
+    async def __call__(self, body, next, context, respond, db_session, user, logger):
         if context["subject"].type == "case":
             logger.warning("Sensitive command middleware is not supported for cases.")
             next()
@@ -20,7 +20,7 @@ class RestrictedCommand:
                 if active_role.role == allowed_role:
                     next()
 
-        respond(
+        await respond(
             text=f"I see you tried to run `{context['command']}`. This is a sensitive command and cannot be run with the incident role you are currently assigned.",
             response_type="ephemeral",
         )

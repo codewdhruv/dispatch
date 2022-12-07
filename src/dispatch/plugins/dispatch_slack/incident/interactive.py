@@ -66,7 +66,7 @@ from dispatch.plugins.dispatch_slack.fields import (
     tag_multi_select,
     title_input,
     tag_multi_select,
-    incident_status_select,
+    title_input,
 )
 from dispatch.plugins.dispatch_slack.incident.enums import (
     AddTimelineEventActions,
@@ -76,8 +76,6 @@ from dispatch.plugins.dispatch_slack.incident.enums import (
     EngageOncallActions,
     EngageOncallBlockIds,
     IncidentReportActions,
-    IncidentReportBlockIds,
-    IncidentReportActionIds,
     IncidentUpdateActions,
     IncidentUpdateBlockIds,
     LinkMonitorActionIds,
@@ -179,6 +177,7 @@ def configure(config):
     app.command(config.slack_command_report_tactical, middleware=middleware)(
         handle_report_tactical_command
     )
+
     app.command(config.slack_command_report_executive, middleware=middleware)(
         handle_report_executive_command
     )
@@ -2068,7 +2067,7 @@ async def handle_list_incidents_command(ack, body, respond, db_session, context)
             if project:
                 projects.append(project)
             else:
-                respond(
+                await respond(
                     text=f"Project name '{args[1]}' in organization '{args[0]}' not found. Check your spelling.",
                     response_type="ephemeral",
                 )
@@ -2122,11 +2121,13 @@ async def handle_list_incidents_command(ack, body, respond, db_session, context)
                     )
                 )
 
-    respond(text="Incident List", blocks=blocks, response_type="ephemeral")
+    blocks = Message(blocks=blocks).build()["blocks"]
+    await respond(text="Incident List", blocks=blocks, response_type="ephemeral")
 
 
 async def handle_list_participants_command(ack, body, respond, client, db_session, context):
     """Handles list participants command."""
+    await ack()
     blocks = [Section(text="*Incident Participants*")]
     participants = participant_service.get_all_by_incident_id(
         db_session=db_session, incident_id=context["subject"].id
@@ -2148,12 +2149,6 @@ async def handle_list_participants_command(ack, body, respond, client, db_sessio
             participant_location = participant_info.get("location", "Unknown")
             participant_weblink = participant_info.get("weblink")
 
-            participant_reason_added = participant.added_reason or "Unknown"
-            if participant.added_by:
-                participant_added_by = participant.added_by.individual.name
-            else:
-                participant_added_by = "Unknown"
-
             participant_active_roles = participant_role_service.get_all_active_roles(
                 db_session=db_session, participant_id=participant.id
             )
@@ -2164,27 +2159,28 @@ async def handle_list_participants_command(ack, body, respond, client, db_sessio
             accessory = None
             # don't load avatars for large incidents
             if len(participants) < 20:
-                participant_avatar_url = dispatch_slack_service.get_user_avatar_url(
+                participant_avatar_url = await dispatch_slack_service.get_user_avatar_url_async(
                     client, participant_email
                 )
                 accessory = Image(image_url=participant_avatar_url, alt_text=participant_name)
 
-            blocks.append(
-                Section(
-                    fields=[
-                        f"*Name* \n<{participant_weblink}|{participant_name} ({participant_email})>",
-                        f"*Team*\n {participant_team}, {participant_department}",
-                        f"*Location* \n{participant_location}",
-                        f"*Incident Role(s)* \n{(', ').join(participant_roles)}",
-                        f"*Reason Added* \n{participant_reason_added}",
-                        f"*Added By* \n{participant_added_by}",
-                    ],
-                    accessory=accessory,
-                ),
-                Divider(),
+            blocks.extend(
+                [
+                    Section(
+                        fields=[
+                            f"*Name* \n<{participant_weblink}|{participant_name} ({participant_email})>",
+                            f"*Team*\n {participant_team}, {participant_department}",
+                            f"*Location* \n{participant_location}",
+                            f"*Incident Role(s)* \n{(', ').join(participant_roles)}",
+                        ],
+                        accessory=accessory,
+                    ),
+                    Divider(),
+                ]
             )
 
-    respond(text="Incident Participant List", blocks=blocks, response_type="ephemeral")
+    blocks = Message(blocks=blocks).build()["blocks"]
+    await respond(text="Incident Participant List", blocks=blocks, response_type="ephemeral")
 
 
 def filter_tasks_by_assignee_and_creator(tasks: List[Task], by_assignee: str, by_creator: str):
@@ -2212,8 +2208,8 @@ async def handle_list_tasks_command(ack, user, body, respond, context, db_sessio
     blocks = []
 
     caller_only = False
-    if body["command"] == context["config"].slack_command_list_my_tasks:
-        caller_only = True
+    # if body["command"] == context["config"].slack_command_list_my_tasks:
+    #    caller_only = True
 
     for status in TaskStatus:
         blocks.append(Section(text=f"*{status} Incident Tasks*"))
@@ -2254,7 +2250,8 @@ async def handle_list_tasks_command(ack, user, body, respond, context, db_sessio
             )
             blocks.append(Divider())
 
-    respond(text="Incident Task List", blocks=blocks, response_type="ephermeral")
+    message = Message(blocks=blocks).build()["blocks"]
+    await respond(text="Incident Task List", blocks=message, response_type="ephermeral")
 
 
 async def handle_list_resources_command(ack, body, respond, client, db_session, context, logger):
@@ -2314,7 +2311,8 @@ async def handle_list_resources_command(ack, body, respond, client, db_session, 
             {"conversation_commands_reference_document_weblink": conversation_reference.weblink}
         )
 
-    respond(text="Incident Resources Message", blocks=blocks, response_type="ephemeral")
+    blocks = Message(blocks=blocks).build()["blocks"]
+    await respond(text="Incident Resources Message", blocks=blocks, response_type="ephemeral")
 
 
 # EVENTS
@@ -2339,7 +2337,7 @@ async def handle_timeline_added_event(ack, body, client, context, db_session):
         incident = incident_service.get(db_session=db_session, incident_id=context["subject"].id)
 
         # we fetch the individual who sent the message
-        message_sender_email = get_user_email(client=client, user_id=message_sender_id)
+        message_sender_email = await get_user_email_async(client=client, user_id=message_sender_id)
         individual = individual_service.get_by_email_and_project(
             db_session=db_session, email=message_sender_email, project_id=incident.project.id
         )
@@ -2434,7 +2432,8 @@ async def handle_after_hours_message(ack, context, body, client, respond, user, 
             participant.after_hours_notification = True
             db_session.add(participant)
             db_session.commit()
-            respond(blocks=blocks, response_type="ephemeral")
+            blocks = Message(blocks=blocks).build()["blocks"]
+            await respond(blocks=blocks, response_type="ephemeral")
 
 
 @app.event("member_joined", middleware=[action_context_middleware, user_middleware, db_middleware])
@@ -2448,7 +2447,7 @@ async def handle_member_joined_channel(ack, user, body, client, db_session, cont
     incident = incident_service.get(db_session=db_session, incident_id=context["subject"].id)
 
     if body["inviter"]:
-        inviter_email = get_user_email(client=client, user_id=body["inviter"])
+        inviter_email = await get_user_email_async(client=client, user_id=body["inviter"])
         client.user
         added_by_participant = participant_service.get_by_incident_id_and_email(
             db_session=db_session, incident_id=context["subject"].id, email=inviter_email
@@ -2480,7 +2479,7 @@ async def handle_thread_creation(ack, respond, client, context):
         return
 
     message = "Please refrain from using threads in incident related channels. Threads make it harder for incident participants to maintain context."
-    respond(text=message, response_type="ephemeral")
+    await respond(text=message, response_type="ephemeral")
 
 
 @app.event({"type": "message"}, middleware=[message_context_middleware, db_middleware])
@@ -2573,7 +2572,8 @@ async def handle_message_monitor(ack, respond, body, context, db_session):
                             ],
                         ),
                     ]
-                    respond(blocks=blocks, response_type="ephemeral")
+                    blocks = Message(blocks=blocks).build()["blocks"]
+                    await respond(blocks=blocks, response_type="ephemeral")
 
 
 # MODALS
@@ -2584,9 +2584,10 @@ async def handle_add_timeline_event_command(ack, body, respond, client, context,
         Context(
             elements=[MarkdownText(text="Use this form to add an event to the incident timeline.")]
         ),
-        datetime_picker_block(),
         description_input(),
     ]
+
+    blocks.extend(datetime_picker_block())
 
     modal = Modal(
         title="Add Timeline Event",
@@ -2598,32 +2599,30 @@ async def handle_add_timeline_event_command(ack, body, respond, client, context,
     ).build()
 
     await client.views_open(
-        view_id=body["view"]["id"],
-        hash=body["view"]["hash"],
         trigger_id=body["trigger_id"],
         view=modal,
     )
 
 
-@app.action(
+@app.view(
     AddTimelineEventActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
 async def handle_add_timeline_submission_event(ack, user, client, context, db_session, form_data):
     """Handles the add timeline submission event."""
-    event_date = form_data.get(AddTimelineEventBlockIds.date)
-    event_hour = form_data.get(AddTimelineEventBlockIds.hour)["value"]
-    event_minute = form_data.get(AddTimelineEventBlockIds.minute)["value"]
-    event_timezone_selection = form_data.get(AddTimelineEventBlockIds.timezone)["value"]
-    event_description = form_data.get(AddTimelineEventBlockIds.description)
+    event_date = form_data.get(DefaultBlockIds.date_picker_input)
+    event_hour = form_data.get(DefaultBlockIds.hour_picker_input)["value"]
+    event_minute = form_data.get(DefaultBlockIds.minute_picker_input)["value"]
+    event_timezone_selection = form_data.get(DefaultBlockIds.timezone_picker_input)["value"]
+    event_description = form_data.get(DefaultBlockIds.description_input)
 
     participant = participant_service.get_by_incident_id_and_email(
         db_session=db_session, incident_id=context["subject"].id, email=user.email
     )
 
     event_timezone = event_timezone_selection
-    if event_timezone_selection == "profile":
-        participant_profile = get_user_profile_by_email(client, user.email)
+    if event_timezone_selection == TimezoneOptions.local:
+        participant_profile = await get_user_profile_by_email_async(client, user.email)
         if participant_profile.get("tz"):
             event_timezone = participant_profile.get("tz")
 
@@ -2652,10 +2651,9 @@ async def handle_update_participant_command(ack, respond, body, context, db_sess
     """Handles the update participant command."""
     await ack()
     if context["subject"].type == "case":
-        respond(text="This command is not yet supported in the case context.")
+        await respond(text="This command is not yet supported in the case context.")
 
     incident = incident_service.get(db_session=db_session, incident_id=context["subject"].id)
-    participants = [p.name for p in incident.participants]
 
     blocks = [
         Context(
@@ -2665,14 +2663,14 @@ async def handle_update_participant_command(ack, respond, body, context, db_sess
                 )
             ]
         ),
-        Input(
-            PlainTextInput(placeholder="Reason for addition"),
-            label="Reason added",
-            block_id=UpdateNotificationGroupBlockIds.reason,
-        ),
         participant_select(
-            block_id=UpdateNotificationGroupBlockIds.participant,
-            participants=participants,
+            block_id=UpdateParticipantBlockIds.participant,
+            participants=incident.participants,
+        ),
+        Input(
+            element=PlainTextInput(placeholder="Reason for addition"),
+            label="Reason added",
+            block_id=UpdateParticipantBlockIds.reason,
         ),
     ]
 
@@ -2685,10 +2683,10 @@ async def handle_update_participant_command(ack, respond, body, context, db_sess
         private_metadata=context["subject"].json(),
     ).build()
 
-    await client.view_open(trigger_id=body["trigger_id"], view=modal)
+    await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     UpdateParticipantActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
@@ -2746,7 +2744,7 @@ async def handle_update_notifications_group_command(ack, body, context, client, 
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     UpdateNotificationGroupActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
@@ -2788,7 +2786,7 @@ async def handle_assign_role_command(ack, context, body, client):
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     AssignRoleActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
@@ -2797,7 +2795,7 @@ async def handle_assign_role_submission_event(ack, user, client, context, db_ses
     await ack()
     assignee_user_id = form_data[AssignRoleBlockIds.user]["value"]
     assignee_role = form_data[AssignRoleBlockIds.role]["value"]
-    assignee_email = get_user_email(client=client, user_id=assignee_user_id)
+    assignee_email = await get_user_email_async(client=client, user_id=assignee_user_id)
 
     # we assign the role
     incident_flows.incident_assign_role_flow(
@@ -2826,7 +2824,9 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
     await ack()
     # TODO handle cases
     if context["subject"].type == "case":
-        respond(text="Command is not currently available for cases.", response_type="ephemeral")
+        await respond(
+            text="Command is not currently available for cases.", response_type="ephemeral"
+        )
         return
 
     incident = incident_service.get(db_session=db_session, incident_id=context["subject"].id)
@@ -2836,12 +2836,14 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
     )
 
     if not oncall_services.count():
-        respond(
-            blocks=[
-                Section(
-                    text="No oncall services have been defined. You can define them in the Dispatch UI at /services."
-                )
-            ],
+        await respond(
+            blocks=Message(
+                blocks=[
+                    Section(
+                        text="No oncall services have been defined. You can define them in the Dispatch UI at /services."
+                    )
+                ]
+            ).build()["blocks"],
             response_type="ephemeral",
         )
         return
@@ -2851,11 +2853,20 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
     blocks = [
         static_select_block(
             label="Service",
+            action_id=EngageOncallActionIds.service,
             block_id=EngageOncallBlockIds.service,
             placeholder="Select Service",
             options=services,
         ),
-        Checkboxes(options=[PlainOption(text="Page")], block_id=EngageOncallBlockIds.page),
+        Input(
+            block_id=EngageOncallBlockIds.page,
+            label="Page",
+            element=Checkboxes(
+                options=[PlainOption(text="Page", value="True")],
+                action_id=EngageOncallActionIds.page,
+            ),
+            optional=True,
+        ),
     ]
 
     modal = Modal(
@@ -2870,7 +2881,7 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     EngageOncallActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
@@ -2906,7 +2917,7 @@ async def handle_report_tactical_command(ack, client, respond, context, db_sessi
     await ack()
 
     if context["subject"].type == "case":
-        respond(
+        await respond(
             text="Command is not available outside of incident channels.", response_type="ephemeral"
         )
         return
@@ -2960,7 +2971,7 @@ async def handle_report_tactical_command(ack, client, respond, context, db_sessi
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     ReportTacticalActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
@@ -2969,10 +2980,11 @@ async def handle_report_tactical_submission_event(
 ):
     """Handles the report tactical submission"""
     await ack()
+
     tactical_report_in = TacticalReportCreate(
-        conditions=form_data[ReportTacticalBlockIds.conditions]["value"],
-        actions=form_data[ReportTacticalBlockIds.actions]["value"],
-        needs=form_data[ReportTacticalBlockIds.needs]["value"],
+        conditions=form_data[ReportTacticalBlockIds.conditions],
+        actions=form_data[ReportTacticalBlockIds.actions],
+        needs=form_data[ReportTacticalBlockIds.needs],
     )
 
     report_flows.create_tactical_report(
@@ -2982,16 +2994,13 @@ async def handle_report_tactical_submission_event(
         db_session=db_session,
     )
 
-    modal = Modal(title="Submitted", close="Close")
-    ack(response_action="update", view=modal)
-
 
 async def handle_report_executive_command(ack, body, client, respond, context, db_session):
     """Handles executive report command."""
     await ack()
 
     if context["subject"].type == "case":
-        respond(
+        await respond(
             text="Command is not available outside of incident channels.", response_type="ephemeral"
         )
         return
@@ -3028,13 +3037,13 @@ async def handle_report_executive_command(ack, body, client, respond, context, d
             ),
             block_id=ReportExecutiveBlockIds.next_steps,
         ),
-        Context(
-            elements=[
-                MarkdownText(
-                    text=f"Use {context['config'].slack_command_update_notifications_group} to update the list of recipients of this report."
-                )
-            ]
-        ),
+        # Context(
+        #    elements=[
+        #        MarkdownText(
+        #            text=f"Use {context['config'].slack_command_update_notifications_group} to update the list of recipients of this report."
+        #        )
+        #    ]
+        # ),
     ]
 
     modal = Modal(
@@ -3049,20 +3058,27 @@ async def handle_report_executive_command(ack, body, client, respond, context, d
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     ReportExecutiveActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
 async def handle_report_executive_submission_event(
-    ack, user, client, context, db_session, form_data
+    ack, user, client, body, context, db_session, form_data
 ):
     """Handles the report executive submission"""
-    await ack()
     executive_report_in = ExecutiveReportCreate(
-        conditions=form_data[ReportExecutiveBlockIds.conditions]["value"],
-        actions=form_data[ReportExecutiveBlockIds.actions]["value"],
-        needs=form_data[ReportExecutiveBlockIds.needs]["value"],
+        current_status=form_data[ReportExecutiveBlockIds.current_status],
+        overview=form_data[ReportExecutiveBlockIds.overview],
+        next_steps=form_data[ReportExecutiveBlockIds.next_steps],
     )
+
+    modal = Modal(
+        title="Executive Report Created",
+        close="Close",
+        blocks=[Context(elements=[MarkdownText(text="Success!")])],
+    ).build()
+
+    await ack(response_action="update", view=modal)
 
     report_flows.create_executive_report(
         user_email=user.email,
@@ -3070,9 +3086,6 @@ async def handle_report_executive_submission_event(
         executive_report_in=executive_report_in,
         db_session=db_session,
     )
-
-    modal = Modal(title="Submitted", close="Close")
-    ack(response_action="update", view=modal)
 
 
 async def handle_update_incident_command(ack, body, client, context, db_session):
@@ -3085,7 +3098,7 @@ async def handle_update_incident_command(ack, body, client, context, db_session)
         title_input(initial_value=incident.title),
         description_input(initial_value=incident.description),
         resolution_input(initial_value=incident.resolution),
-        incident_status_select(initial_value=incident.status),
+        incident_status_select(initial_option=incident.status),
         project_select(
             db_session=db_session,
             initial_option=incident.project.name,
@@ -3108,8 +3121,6 @@ async def handle_update_incident_command(ack, body, client, context, db_session)
             project_id=incident.project.id,
         ),
         tag_multi_select(
-            action_id=IncidentUpdateActionIds.tags,
-            block_id=IncidentUpdateBlockIds.tags,
             initial_options=[t.name for t in incident.tags],
         ),
     ]
@@ -3126,13 +3137,14 @@ async def handle_update_incident_command(ack, body, client, context, db_session)
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     IncidentUpdateActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
-async def handle_update_incident_submission_event(ack, user, context, db_session, form_data):
+async def handle_update_incident_submission_event(
+    ack, body, client, user, context, db_session, form_data
+):
     """Handles the update incident submission"""
-    await ack()
     incident = incident_service.get(db_session=db_session, incident_id=context["subject"].id)
 
     tags = []
@@ -3165,6 +3177,21 @@ async def handle_update_incident_submission_event(ack, user, context, db_session
         db_session=db_session, incident=incident, incident_in=incident_in
     )
 
+    modal = Modal(
+        title="Incident Updated",
+        close="Close",
+        blocks=[
+            Context(elements=[MarkdownText(text="The incident has been sucessfully updated.")])
+        ],
+    ).build()
+
+    await client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        trigger_id=body["trigger_id"],
+        view=modal,
+    )
+
     commander_email = updated_incident.commander.individual.email
     reporter_email = updated_incident.reporter.individual.email
     incident_flows.incident_update_flow(
@@ -3176,13 +3203,10 @@ async def handle_update_incident_submission_event(ack, user, context, db_session
         db_session=db_session,
     )
 
-    modal = Modal(title="Incident Updated", close="Close")
-    ack(response_action="update", view=modal)
-
 
 async def handle_report_incident_command(ack, body, context, db_session, client):
     """Handles the report incident command."""
-
+    await ack()
     blocks = [
         Context(
             elements=[
@@ -3198,10 +3222,7 @@ async def handle_report_incident_command(ack, body, context, db_session, client)
             action_id=IncidentReportActions.project_select,
             dispatch_action=True,
         ),
-        tag_multi_select(
-            action_id=IncidentReportActionIds.tags,
-            block_id=IncidentReportBlockIds.tags,
-        ),
+        tag_multi_select(),
     ]
 
     modal = Modal(
@@ -3210,17 +3231,19 @@ async def handle_report_incident_command(ack, body, context, db_session, client)
         submit="Submit",
         close="Cancel",
         callback_id=IncidentReportActions.submit,
+        private_metadata=context["subject"].json(),
     ).build()
 
     await client.views_open(trigger_id=body["trigger_id"], view=modal)
 
 
-@app.action(
+@app.view(
     IncidentReportActions.submit,
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
-async def handle_report_incident_submission_event(ack, user, db_session, form_data):
+async def handle_report_incident_submission_event(ack, user, client, body, db_session, form_data):
     """Handles the report incident submission"""
+    await ack()
     tags = []
     for t in form_data.get(DefaultBlockIds.tags_multi_select, []):
         # we have to fetch as only the IDs are embedded in slack
@@ -3249,16 +3272,22 @@ async def handle_report_incident_submission_event(ack, user, db_session, form_da
         Section(text=f"*Description*\n {incident.description}"),
         Section(
             fields=[
-                PlainTextInput(text=f"*Type*\n {incident.type}"),
-                PlainTextInput(text=f"*Severity*\n {incident.severity.name}"),
-                PlainTextInput(text=f"*Priority*\n {incident.priority.name}"),
+                MarkdownText(text=f"*Commander* \n {incident.commander.individual.name}"),
+                MarkdownText(text=f"*Type*\n {incident.incident_type.name}"),
+                MarkdownText(text=f"*Severity*\n {incident.incident_severity.name}"),
+                MarkdownText(text=f"*Priority*\n {incident.incident_priority.name}"),
             ]
         ),
     ]
 
-    modal = Modal(title="Incident Report Confirmation", blocks=blocks, close="Close")
+    modal = Modal(title="Incident Report", blocks=blocks, close="Close").build()
 
-    ack(response_action="update", view=modal)
+    await client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        trigger_id=body["trigger_id"],
+        view=modal,
+    )
 
     incident_flows.incident_create_flow(
         incident_id=incident.id,
@@ -3266,6 +3295,60 @@ async def handle_report_incident_submission_event(ack, user, db_session, form_da
         organization_slug=incident.project.organization.slug,
     )
 
-    modal = Modal(title="Incident Creation Complete", blocks=blocks, close="Close")
 
-    ack(response_action="update", view=modal)
+@app.action(
+    IncidentReportActions.project_select, middleware=[action_context_middleware, db_middleware]
+)
+async def handle_report_incident_project_select_action(ack, body, client, context, db_session):
+    await ack()
+    values = body["view"]["state"]["values"]
+
+    selected_project_name = values[DefaultBlockIds.project_select][
+        IncidentReportActions.project_select
+    ]["selected_option"]["value"]
+
+    project = project_service.get_by_name(
+        db_session=db_session,
+        name=selected_project_name,
+    )
+
+    blocks = [
+        Context(elements=[MarkdownText(text="Use this form to update incident details.")]),
+        title_input(),
+        description_input(),
+        resolution_input(),
+        project_select(
+            db_session=db_session,
+            action_id=IncidentReportActions.project_select,
+            dispatch_action=True,
+        ),
+        incident_type_select(
+            db_session=db_session,
+            project_id=project.id,
+        ),
+        incident_priority_select(
+            db_session=db_session,
+            project_id=project.id,
+        ),
+        incident_severity_select(
+            db_session=db_session,
+            project_id=project.id,
+        ),
+        tag_multi_select(),
+    ]
+
+    modal = Modal(
+        title="Report Incident",
+        blocks=blocks,
+        submit="Submit",
+        close="Cancel",
+        callback_id=IncidentReportActions.submit,
+        private_metadata=context["subject"].json(),
+    ).build()
+
+    await client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        trigger_id=body["trigger_id"],
+        view=modal,
+    )
