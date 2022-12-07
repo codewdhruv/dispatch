@@ -3,7 +3,7 @@ from blockkit import Context, MarkdownText, Modal, Input, UsersSelect
 from dispatch.case import flows as case_flows
 from dispatch.case import service as case_service
 from dispatch.case.enums import CaseStatus
-from dispatch.case.models import Case, CaseUpdate
+from dispatch.case.models import Case, CaseUpdate, CaseCreate
 from dispatch.common.utils.cli import install_plugins
 from dispatch.incident import flows as incident_flows
 from dispatch.plugins.dispatch_slack.bolt import app
@@ -13,6 +13,7 @@ from dispatch.plugins.dispatch_slack.middleware import (
     db_middleware,
     user_middleware,
     modal_submit_middleware,
+    shortcut_context_middleware,
 )
 from dispatch.plugins.dispatch_slack.case.enums import (
     CaseEscalateActions,
@@ -31,6 +32,7 @@ from dispatch.plugins.dispatch_slack.fields import (
     project_select,
     resolution_input,
     title_input,
+    case_status_select,
 )
 from dispatch.plugins.dispatch_slack.messaging import create_case_notification
 from dispatch.plugins.dispatch_slack.models import SubjectMetadata
@@ -63,7 +65,7 @@ async def message_hello(client, context):
 
     install_plugins()
     db_session = get_default_organization_scope()
-    case = db_session.query(Case).first()
+    case = db_session.query(Case).filter(Case.id == 21).one()
 
     result = await client.chat_postMessage(
         blocks=create_case_notification(case=case, channel_id=context["channel_id"]),
@@ -163,7 +165,7 @@ async def handle_project_select_action(
     context,
     db_session,
 ):
-    ack()
+    await ack()
     values = body["view"]["state"]["values"]
 
     selected_project_name = values[DefaultBlockIds.project_select][
@@ -223,7 +225,7 @@ async def handle_escalation_submission_event(
     db_session,
     user,
 ):
-    ack()
+    await ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
     case.status = CaseStatus.escalated
     db_session.commit()
@@ -251,7 +253,7 @@ async def handle_escalation_submission_event(
     middleware=[button_context_middleware, db_middleware, user_middleware],
 )
 async def join_incident_button_click(ack, body, user, db_session, context, client):
-    ack()
+    await ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
 
     # TODO handle case there are multiple related incidents
@@ -273,6 +275,7 @@ async def edit_button_click(ack, body, db_session, context, client):
         description_input(initial_value=case.description),
         resolution_input(initial_value=case.resolution),
         assignee_select(initial_user=assignee_initial_user),
+        case_status_select(initial_option=case.status),
         case_type_select(
             db_session=db_session,
             initial_option=case.case_type.name,
@@ -287,7 +290,7 @@ async def edit_button_click(ack, body, db_session, context, client):
     ]
 
     modal = Modal(
-        title="Resolve Case",
+        title="Edit Case",
         blocks=blocks,
         submit="Update",
         close="Close",
@@ -309,6 +312,7 @@ async def resolve_button_click(ack, body, db_session, context, client):
         title_input(initial_value=case.title),
         description_input(initial_value=case.description),
         resolution_input(initial_value=case.resolution),
+        # case_status_select(initial_option=CaseStatus.closed),
         assignee_select(initial_user=assignee_initial_user),
         case_type_select(
             db_session=db_session,
@@ -341,7 +345,7 @@ async def resolve_button_click(ack, body, db_session, context, client):
 async def handle_resolve_submission_event(
     ack, body, context, payload, user, form_data, db_session, client
 ):
-    ack()
+    await ack()
     case = case_service.get(db_session=db_session, case_id=context["subject"].id)
 
     case_priority = None
@@ -369,12 +373,17 @@ async def handle_resolve_submission_event(
     )
 
 
-@app.shortcut(CaseShortcutCallbacks.report, middleware=[db_middleware])
+@app.shortcut(CaseShortcutCallbacks.report, middleware=[db_middleware, shortcut_context_middleware])
 async def report_issue(ack, shortcut, body, context, db_session, client):
-    ack()
+    await ack()
     initial_description = None
     if body.get("message"):
-        initial_description = body["message"]["text"]
+        permalink = (
+            await client.chat_getPermalink(
+                channel=context["subject"].channel_id, message_ts=body["message"]["ts"]
+            )
+        )["permalink"]
+        initial_description = f"{body['message']['text']}\n\n{permalink}"
 
     blocks = [
         Context(
@@ -397,13 +406,14 @@ async def report_issue(ack, shortcut, body, context, db_session, client):
         submit="Report",
         close="Close",
         callback_id=CaseReportActions.submit,
+        private_metadata=context["subject"].json(),
     ).build()
     await client.views_open(trigger_id=shortcut["trigger_id"], view=modal)
 
 
-@app.action(CaseReportActions.project_select, middleware=[db_middleware])
+@app.action(CaseReportActions.project_select, middleware=[db_middleware, action_context_middleware])
 async def handle_report_project_select_action(ack, body, db_session, context, client):
-    ack()
+    await ack()
     values = body["view"]["state"]["values"]
 
     selected_project_name = values[DefaultBlockIds.project_select][
@@ -425,10 +435,10 @@ async def handle_report_project_select_action(ack, body, db_session, context, cl
             action_id=CaseEscalateActions.project_select,
             dispatch_action=True,
         ),
-        incident_type_select(
+        case_type_select(
             db_session=db_session, initial_option=None, project_id=project.id, block_id=None
         ),
-        incident_priority_select(
+        case_priority_select(
             db_session=db_session,
             project_id=project.id,
             initial_option=None,
@@ -454,10 +464,45 @@ async def handle_report_project_select_action(ack, body, db_session, context, cl
     )
 
 
-@app.view(CaseReportActions.submit, middleware=[db_middleware])
-async def handle_report_submission_event(ack, body, context, db_session, client, logger):
-    ack()
+@app.view(
+    CaseReportActions.submit,
+    middleware=[db_middleware, action_context_middleware, modal_submit_middleware, user_middleware],
+)
+async def handle_report_submission_event(
+    ack, body, context, form_data, db_session, user, client, logger
+):
+    await ack()
 
-    # create the case
+    case_priority = None
+    if form_data.get(DefaultBlockIds.case_priority_select):
+        case_priority = {"name": form_data[DefaultBlockIds.case_priority_select]["name"]}
 
-    # @ the user in the case thread as confirmation
+    case_type = None
+    if form_data.get(DefaultBlockIds.case_type_select):
+        case_type = {"name": form_data[DefaultBlockIds.case_type_select]["value"]}
+
+    case_in = CaseCreate(
+        title=form_data[DefaultBlockIds.title_input],
+        description=form_data[DefaultBlockIds.description_input],
+        status=CaseStatus.new,
+        case_priority=case_priority,
+        case_type=case_type,
+    )
+
+    case = case_service.create(db_session=db_session, case_in=case_in, current_user=user)
+
+    result = await client.chat_postEphemeral(
+        text="Case successfully created. Running case excution flows now.",
+        channel=context["subject"].channel_id,
+        user=context["user_id"],
+    )
+    case_flows.case_new_create_flow(
+        case_id=case.id, organization_slug=context["subject"].organization_slug
+    )
+
+    # update message when we have more info
+    # await client.chat_update(
+    #    text=f"Case {case.name} successfully created.",
+    #    channel=context["subject"].channel_id,
+    #    ts=result["message_ts"],
+    # )

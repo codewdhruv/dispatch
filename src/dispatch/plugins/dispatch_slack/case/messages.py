@@ -27,7 +27,7 @@ def create_case_notification(case: Case, channel_id: str):
             ),
         ),
         Section(
-            text=f"*Description* \n {case.description} Additional information is available in the <{case.case_document.weblink}|case document>."
+            text=f"*Description* \n {case.description} \n \n Additional information is available in the <{case.case_document.weblink}|case document>."
         ),
         Section(
             fields=[
@@ -108,6 +108,12 @@ def create_case_notification(case: Case, channel_id: str):
                         Button(
                             text="Edit",
                             action_id=CaseNotificationActions.edit,
+                            style="primary",
+                            value=button_metadata,
+                        ),
+                        Button(
+                            text="Acknowledge",
+                            action_id=CaseNotificationActions.acknowledge,
                             style="primary",
                             value=button_metadata,
                         ),

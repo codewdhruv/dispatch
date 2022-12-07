@@ -5,6 +5,7 @@ class CaseNotificationActions(DispatchEnum):
     escalate = "case-notification-escalate"
     resolve = "case-notification-resolve"
     reopen = "case-notification-reopen"
+    acknowledge = "case-notification-acknowledge"
     edit = "case-notification-edit"
     join_incident = "case-notification-join-incident"
 
