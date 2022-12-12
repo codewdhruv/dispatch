@@ -26,7 +26,7 @@ app = AsyncApp(
 )
 router = APIRouter()
 
-app.use(MultiMessageListener)
+# app.use(MultiMessageListener)
 
 logging.basicConfig(level=logging.DEBUG)
 

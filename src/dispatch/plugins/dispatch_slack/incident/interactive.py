@@ -100,6 +100,7 @@ from dispatch.plugins.dispatch_slack.middleware import (
     modal_submit_middleware,
     restricted_command_middleware,
     user_middleware,
+    restricted_command_middleware,
 )
 from dispatch.plugins.dispatch_slack.models import SubjectMetadata
 from dispatch.plugins.dispatch_slack.service import (
@@ -2269,34 +2270,32 @@ async def handle_list_resources_command(ack, body, respond, client, db_session, 
     )
 
     blocks = [
-        Section(text=f"*<{incident.title}>*"),
-        Section(text=incident_description),
-        Section(text=incident.commander.individual.name),
+        Section(text=f"*<{incident.title}|https://google.com>*"),
+        Section(text=f"*Description* \n {incident_description}"),
+        Section(
+            text=f"*Commander* \n <{incident.commander.individual.weblink}|{incident.commander.individual.name}>"
+        ),
+        Section(
+            text=f"*Reporter* \n <{incident.reporter.individual.weblink}|{incident.reporter.individual.name}>"
+        ),
     ]
 
-    # optional blocks
-    for i in [
-        "incident_document.weblink",
-        "storage_weblink",
-        "ticket.weblink",
-        "conference.weblink",
-        "conference.conference_challenge",
-        "incident_review_document",
-    ]:
-        attr = resolve_attr(incident, i)
-        if attr:
-            blocks.append(Section(text=f"*<{attr}>*"))
+    if resolve_attr(incident, "incident_document.weblink"):
+        blocks.append(Section(text=f"*<{incident.incident_document.weblink}|Incident Document>*"))
 
-    message_kwargs = {
-        "title": incident.title,
-        "description": incident_description,
-        "commander_fullname": incident.commander.individual.name,
-        "commander_team": incident.commander.team,
-        "commander_weblink": incident.commander.individual.weblink,
-        "reporter_fullname": incident.reporter.individual.name,
-        "reporter_team": incident.reporter.team,
-        "reporter_weblink": incident.reporter.individual.weblink,
-    }
+    if resolve_attr(incident, "storage.weblink"):
+        blocks.append(Section(text=f"*<{incident.storage.weblink}|Storage>*"))
+
+    if resolve_attr(incident, "ticket.weblink"):
+        blocks.append(Section(text=f"*<{incident.ticket.weblink}|Ticket>*"))
+
+    if resolve_attr(incident, "conference.weblink"):
+        blocks.append(Section(text=f"*<{incident.conference.weblink}|Conference>*"))
+
+    if resolve_attr(incident, "incident_review_document"):
+        blocks.append(
+            Section(text=f"*<{incident.incident_review_document}|Incident Review Document>(")
+        )
 
     faq_doc = document_service.get_incident_faq_document(
         db_session=db_session, project_id=incident.project_id
@@ -2309,10 +2308,6 @@ async def handle_list_resources_command(ack, body, respond, client, db_session, 
     )
     if conversation_reference:
         blocks.append(Section(text=f"*<{conversation_reference.weblink}|Command Reference>*"))
-
-        message_kwargs.update(
-            {"conversation_commands_reference_document_weblink": conversation_reference.weblink}
-        )
 
     blocks = Message(blocks=blocks).build()["blocks"]
     await respond(text="Incident Resources Message", blocks=blocks, response_type="ephemeral")
@@ -2580,7 +2575,7 @@ async def handle_message_monitor(ack, respond, body, context, db_session):
 
 
 # MODALS
-async def handle_add_timeline_event_command(ack, body, respond, client, context, db_session):
+async def handle_add_timeline_event_command(ack, body, client, context):
     """Handles the add timeline event command."""
     await ack()
     blocks = [
@@ -2765,19 +2760,27 @@ async def handle_assign_role_command(ack, context, body, client):
     """Handles the assign role command."""
     await ack()
 
-    roles = [r for r in ParticipantRoleType if r != ParticipantRoleType.participant]
+    roles = [
+        {"text": r.value, "value": r.value}
+        for r in ParticipantRoleType
+        if r != ParticipantRoleType.participant
+    ]
 
     blocks = [
         Context(
             elements=[
-                PlainTextInput(
+                MarkdownText(
                     text="Assign a role to a participant. Note: User will be invited to incident channel if they are not yet a member."
                 )
             ]
         ),
-        Section(text="Select User", block_id=AssignRoleBlockIds.user, accessory=UsersSelect()),
+        Input(
+            block_id=AssignRoleBlockIds.user,
+            label="Participant",
+            element=UsersSelect(placeholder="Participant"),
+        ),
         static_select_block(
-            placeholder="Select Role", options=roles, block_id=AssignRoleBlockIds.role
+            placeholder="Select Role", label="Role", options=roles, block_id=AssignRoleBlockIds.role
         ),
     ]
 
@@ -2798,7 +2801,6 @@ async def handle_assign_role_command(ack, context, body, client):
 )
 async def handle_assign_role_submission_event(ack, user, client, context, db_session, form_data):
     """Handles the assign role submission."""
-    await ack()
     assignee_user_id = form_data[AssignRoleBlockIds.user]["value"]
     assignee_role = form_data[AssignRoleBlockIds.role]["value"]
     assignee_email = await get_user_email_async(client=client, user_id=assignee_user_id)
@@ -2821,8 +2823,8 @@ async def handle_assign_role_submission_event(ack, user, client, context, db_ses
             incident_id=context["subject"].id, db_session=db_session
         )
 
-    modal = Modal(title="Engagement", close="Close")
-    ack(response_action="update", view=modal)
+    modal = Modal(title="Engagement", blocks=[Section(text="Success!")], close="Close").build()
+    await ack(response_action="update", view=modal)
 
 
 async def handle_engage_oncall_command(ack, respond, context, body, client, db_session):
@@ -2854,7 +2856,7 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
         )
         return
 
-    services = [s.name for s in oncall_services]
+    services = [{"text": s.name, "value": s.external_id} for s in oncall_services]
 
     blocks = [
         static_select_block(
@@ -2868,7 +2870,7 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
             block_id=EngageOncallBlockIds.page,
             label="Page",
             element=Checkboxes(
-                options=[PlainOption(text="Page", value="True")],
+                options=[PlainOption(text="Page", value="Yes")],
                 action_id=EngageOncallActionIds.page,
             ),
             optional=True,
@@ -2894,8 +2896,9 @@ async def handle_engage_oncall_command(ack, respond, context, body, client, db_s
 async def handle_engage_oncall_submission_event(ack, user, context, db_session, form_data):
     """Handles the engage oncall submission"""
     await ack()
+
     oncall_service_external_id = form_data[EngageOncallBlockIds.service]["value"]
-    page = form_data[EngageOncallBlockIds.page]["value"]
+    page = form_data.get(EngageOncallBlockIds.page, {"value": None})["value"]
 
     oncall_individual, oncall_service = incident_flows.incident_engage_oncall_flow(
         user.email,
@@ -2914,8 +2917,8 @@ async def handle_engage_oncall_submission_event(ack, user, context, db_session, 
     if oncall_individual and oncall_service:
         message = f"You have successfully engaged {oncall_individual.name} from the {oncall_service.name} oncall rotation."
 
-    modal = Modal(title="Engagement", close="Close")
-    ack(response_action="update", view=modal)
+    modal = Modal(title="Engagement", blocks=[Section(text=message)], close="Close").build()
+    await ack(response_action="update", view=modal)
 
 
 async def handle_report_tactical_command(ack, client, respond, context, db_session, body):
@@ -3069,7 +3072,7 @@ async def handle_report_executive_command(ack, body, client, respond, context, d
     middleware=[action_context_middleware, db_middleware, user_middleware, modal_submit_middleware],
 )
 async def handle_report_executive_submission_event(
-    ack, user, client, body, context, db_session, form_data
+    user, client, body, context, db_session, form_data
 ):
     """Handles the report executive submission"""
     executive_report_in = ExecutiveReportCreate(
@@ -3079,18 +3082,36 @@ async def handle_report_executive_submission_event(
     )
 
     modal = Modal(
-        title="Executive Report Created",
+        title="Executive Report",
         close="Close",
-        blocks=[Context(elements=[MarkdownText(text="Success!")])],
+        blocks=[Section(text="Creating report and sending it to recipients...")],
     ).build()
 
-    await ack(response_action="update", view=modal)
+    stack = await client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        trigger_id=body["trigger_id"],
+        view=modal,
+    )
 
     report_flows.create_executive_report(
         user_email=user.email,
         incident_id=context["subject"].id,
         executive_report_in=executive_report_in,
         db_session=db_session,
+    )
+
+    modal = Modal(
+        title="Executive Report",
+        close="Close",
+        blocks=[Section(text="Creating report and sending it to recipients... Success!")],
+    ).build()
+
+    await client.views_update(
+        view_id=stack["view"]["id"],
+        hash=stack["view"]["hash"],
+        trigger_id=stack["trigger_id"],
+        view=modal,
     )
 
 
@@ -3104,29 +3125,39 @@ async def handle_update_incident_command(ack, body, client, context, db_session)
         title_input(initial_value=incident.title),
         description_input(initial_value=incident.description),
         resolution_input(initial_value=incident.resolution),
-        incident_status_select(initial_option=incident.status),
+        incident_status_select(initial_option={"text": incident.status, "value": incident.status}),
         project_select(
             db_session=db_session,
-            initial_option=incident.project.name,
+            initial_option={"text": incident.project.name, "value": incident.project.id},
             action_id=IncidentUpdateActions.project_select,
             dispatch_action=True,
         ),
         incident_type_select(
             db_session=db_session,
-            initial_option=incident.incident_type.name,
+            initial_option={
+                "text": incident.incident_type.name,
+                "value": incident.incident_type.id,
+            },
             project_id=incident.project.id,
         ),
         incident_priority_select(
             db_session=db_session,
-            initial_option=incident.incident_priority.name,
+            initial_option={
+                "text": incident.incident_priority.name,
+                "value": incident.incident_priority.id,
+            },
             project_id=incident.project.id,
         ),
         incident_severity_select(
             db_session=db_session,
-            initial_option=incident.incident_severity.name,
+            initial_option={
+                "text": incident.incident_severity.name,
+                "value": incident.incident_severity.id,
+            },
             project_id=incident.project.id,
         ),
         tag_multi_select(
+            optional=True,
             initial_options=[{"text": t.name, "value": t.name} for t in incident.tags],
         ),
     ]
@@ -3163,10 +3194,10 @@ async def handle_update_incident_submission_event(
         title=form_data[DefaultBlockIds.title_input],
         description=form_data[DefaultBlockIds.description_input],
         resolution=form_data[DefaultBlockIds.resolution_input],
-        incident_type={"name": form_data[DefaultBlockIds.incident_type_select]["value"]},
-        incident_severity={"name": form_data[DefaultBlockIds.incident_severity_select]["value"]},
-        incident_priority={"name": form_data[DefaultBlockIds.incident_priority_select]["value"]},
-        status=form_data[DefaultBlockIds.incident_status_select]["value"],
+        incident_type={"name": form_data[DefaultBlockIds.incident_type_select]["name"]},
+        incident_severity={"name": form_data[DefaultBlockIds.incident_severity_select]["name"]},
+        incident_priority={"name": form_data[DefaultBlockIds.incident_priority_select]["name"]},
+        status=form_data[DefaultBlockIds.incident_status_select]["name"],
         tags=tags,
     )
 
@@ -3189,7 +3220,7 @@ async def handle_update_incident_submission_event(
         blocks=[Section(text="The incident is being updated...")],
     ).build()
 
-    await client.views_update(
+    stack = await client.views_update(
         view_id=body["view"]["id"],
         hash=body["view"]["hash"],
         trigger_id=body["trigger_id"],
@@ -3215,9 +3246,9 @@ async def handle_update_incident_submission_event(
     ).build()
 
     await client.views_update(
-        view_id=body["view"]["id"],
-        hash=body["view"]["hash"],
-        trigger_id=body["trigger_id"],
+        view_id=stack["view"]["id"],
+        hash=stack["view"]["hash"],
+        trigger_id=stack["trigger_id"],
         view=modal,
     )
 
@@ -3240,7 +3271,6 @@ async def handle_report_incident_command(ack, body, context, db_session, client)
             action_id=IncidentReportActions.project_select,
             dispatch_action=True,
         ),
-        tag_multi_select(),
     ]
 
     modal = Modal(
@@ -3268,12 +3298,12 @@ async def handle_report_incident_submission_event(ack, user, client, body, db_se
         tag = tag_service.get(db_session=db_session, tag_id=int(t["value"]))
         tags.append(tag)
 
-    project = {"name": form_data[DefaultBlockIds.project_select]["value"]}
+    project = {"name": form_data[DefaultBlockIds.project_select]["name"]}
     incident_in = IncidentCreate(
         title=form_data[DefaultBlockIds.title_input],
         description=form_data[DefaultBlockIds.description_input],
-        incident_type={"name": form_data[DefaultBlockIds.incident_type_select]["value"]},
-        incident_priority={"name": form_data[DefaultBlockIds.incident_priority_select]["value"]},
+        incident_type={"name": form_data[DefaultBlockIds.incident_type_select]["name"]},
+        incident_priority={"name": form_data[DefaultBlockIds.incident_priority_select]["name"]},
         project=project,
         reporter=ParticipantUpdate(individual=IndividualContactRead(email=user.email)),
         tags=tags,
@@ -3321,38 +3351,25 @@ async def handle_report_incident_project_select_action(ack, body, client, contex
     await ack()
     values = body["view"]["state"]["values"]
 
-    selected_project_name = values[DefaultBlockIds.project_select][
-        IncidentReportActions.project_select
-    ]["selected_option"]["value"]
+    project_id = values[DefaultBlockIds.project_select][IncidentReportActions.project_select][
+        "selected_option"
+    ]["value"]
 
-    project = project_service.get_by_name(
-        db_session=db_session,
-        name=selected_project_name,
-    )
+    project = project_service.get(db_session=db_session, project_id=project_id)
 
     blocks = [
         Context(elements=[MarkdownText(text="Use this form to update incident details.")]),
         title_input(),
         description_input(),
-        resolution_input(),
         project_select(
             db_session=db_session,
             action_id=IncidentReportActions.project_select,
             dispatch_action=True,
         ),
-        incident_type_select(
-            db_session=db_session,
-            project_id=project.id,
-        ),
-        incident_priority_select(
-            db_session=db_session,
-            project_id=project.id,
-        ),
-        incident_severity_select(
-            db_session=db_session,
-            project_id=project.id,
-        ),
-        tag_multi_select(),
+        incident_type_select(db_session=db_session, project_id=project.id, optional=True),
+        incident_priority_select(db_session=db_session, project_id=project.id, optional=True),
+        incident_severity_select(db_session=db_session, project_id=project.id, optional=True),
+        tag_multi_select(optional=True),
     ]
 
     modal = Modal(

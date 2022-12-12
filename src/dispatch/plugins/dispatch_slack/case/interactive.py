@@ -1,4 +1,4 @@
-from blockkit import Context, MarkdownText, Modal, Input, UsersSelect
+from blockkit import Context, MarkdownText, Modal, Input, UsersSelect, Section
 
 from dispatch.case import flows as case_flows
 from dispatch.case import service as case_service
@@ -132,13 +132,16 @@ async def escalate_button_click(
         description_input(initial_value=case.description),
         project_select(
             db_session=db_session,
-            initial_option=case.project.name,
+            initial_option={"text": case.project.name, "value": case.project.id},
             action_id=CaseEscalateActions.project_select,
             dispatch_action=True,
         ),
         incident_type_select(
             db_session=db_session,
-            initial_option=case.case_type.incident_type.name,
+            initial_option={
+                "text": case.case_type.incident_type.name,
+                "value": case.case_type.incident_type.id,
+            },
             project_id=case.project.id,
         ),
         incident_priority_select(db_session=db_session, project_id=case.project.id, optional=True),
@@ -168,14 +171,11 @@ async def handle_project_select_action(
     await ack()
     values = body["view"]["state"]["values"]
 
-    selected_project_name = values[DefaultBlockIds.project_select][
-        CaseEscalateActions.project_select
-    ]["selected_option"]["value"]
+    project_id = values[DefaultBlockIds.project_select][CaseEscalateActions.project_select][
+        "selected_option"
+    ]["value"]
 
-    project = project_service.get_by_name(
-        db_session=db_session,
-        name=selected_project_name,
-    )
+    project = project_service.get(db_session=db_session, project_id=project_id)
 
     blocks = [
         Context(elements=[MarkdownText(text="Accept the defaults or adjust as needed.")]),
@@ -184,7 +184,7 @@ async def handle_project_select_action(
         assignee_select(),
         project_select(
             db_session=db_session,
-            initial_option=selected_project_name,
+            initial_option={"text": project.name, "value": project.id},
             action_id=CaseEscalateActions.project_select,
             dispatch_action=True,
         ),
@@ -275,15 +275,15 @@ async def edit_button_click(ack, body, db_session, context, client):
         description_input(initial_value=case.description),
         resolution_input(initial_value=case.resolution),
         assignee_select(initial_user=assignee_initial_user),
-        case_status_select(initial_option=case.status),
+        case_status_select(initial_option={"text": case.status, "value": case.status}),
         case_type_select(
             db_session=db_session,
-            initial_option=case.case_type.name,
+            initial_option={"text": case.case_type.name, "value": case.case_type.id},
             project_id=case.project.id,
         ),
         case_priority_select(
             db_session=db_session,
-            initial_option=case.case_priority.name,
+            initial_option={"text": case.case_priority.name, "value": case.case_priority.id},
             project_id=case.project.id,
             optional=True,
         ),
@@ -312,16 +312,16 @@ async def resolve_button_click(ack, body, db_session, context, client):
         title_input(initial_value=case.title),
         description_input(initial_value=case.description),
         resolution_input(initial_value=case.resolution),
-        # case_status_select(initial_option=CaseStatus.closed),
+        # case_status_select(initial_option={"text": CaseStatus.closed, "value": CaseStatus.closed}),
         assignee_select(initial_user=assignee_initial_user),
         case_type_select(
             db_session=db_session,
-            initial_option=case.case_type.name,
+            initial_option={"text": case.case_type.name, "value": case.case_type.id},
             project_id=case.project.id,
         ),
         case_priority_select(
             db_session=db_session,
-            initial_option=case.case_priority.name,
+            initial_option={"text": case.case_priority.name, "value": case.case_priority.id},
             project_id=case.project.id,
             optional=True,
         ),
@@ -350,11 +350,11 @@ async def handle_resolve_submission_event(
 
     case_priority = None
     if form_data.get(DefaultBlockIds.case_priority_select):
-        case_priority = {"name": form_data[DefaultBlockIds.case_priority_select]["name"]}
+        case_priority = {"name": form_data[DefaultBlockIds.case_priority_select]["text"]}
 
     case_type = None
     if form_data.get(DefaultBlockIds.case_type_select):
-        case_type = {"name": form_data[DefaultBlockIds.case_type_select]["value"]}
+        case_type = {"name": form_data[DefaultBlockIds.case_type_select]["text"]}
 
     case_in = CaseUpdate(
         title=form_data[DefaultBlockIds.title_input],
@@ -416,13 +416,13 @@ async def handle_report_project_select_action(ack, body, db_session, context, cl
     await ack()
     values = body["view"]["state"]["values"]
 
-    selected_project_name = values[DefaultBlockIds.project_select][
-        CaseReportActions.project_select
-    ]["selected_option"]["value"]
+    project_id = values[DefaultBlockIds.project_select][CaseReportActions.project_select][
+        "selected_option"
+    ]["value"]
 
-    project = project_service.get_by_name(
+    project = project_service.get(
         db_session=db_session,
-        name=selected_project_name,
+        project_id=project_id,
     )
 
     blocks = [
@@ -431,7 +431,7 @@ async def handle_report_project_select_action(ack, body, db_session, context, cl
         description_input(),
         project_select(
             db_session=db_session,
-            initial_option=selected_project_name,
+            initial_option={"text": project.name, "value": project.id},
             action_id=CaseEscalateActions.project_select,
             dispatch_action=True,
         ),
@@ -475,11 +475,11 @@ async def handle_report_submission_event(
 
     case_priority = None
     if form_data.get(DefaultBlockIds.case_priority_select):
-        case_priority = {"name": form_data[DefaultBlockIds.case_priority_select]["name"]}
+        case_priority = {"name": form_data[DefaultBlockIds.case_priority_select]["text"]}
 
     case_type = None
     if form_data.get(DefaultBlockIds.case_type_select):
-        case_type = {"name": form_data[DefaultBlockIds.case_type_select]["value"]}
+        case_type = {"name": form_data[DefaultBlockIds.case_type_select]["text"]}
 
     case_in = CaseCreate(
         title=form_data[DefaultBlockIds.title_input],
@@ -491,18 +491,32 @@ async def handle_report_submission_event(
 
     case = case_service.create(db_session=db_session, case_in=case_in, current_user=user)
 
-    result = await client.chat_postEphemeral(
-        text="Case successfully created. Running case excution flows now.",
-        channel=context["subject"].channel_id,
-        user=context["user_id"],
+    modal = Modal(
+        title="Case Created",
+        close="Close",
+        blocks=[Section(text="Your case has been created. Running case execution flows now...")],
+    ).build()
+
+    await client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        trigger_id=body["trigger_id"],
+        view=modal,
     )
+
     case_flows.case_new_create_flow(
         case_id=case.id, organization_slug=context["subject"].organization_slug
     )
 
-    # update message when we have more info
-    # await client.chat_update(
-    #    text=f"Case {case.name} successfully created.",
-    #    channel=context["subject"].channel_id,
-    #    ts=result["message_ts"],
-    # )
+    modal = Modal(
+        title="Case Created",
+        close="Close",
+        blocks=[Section(text="Your case has been created.")],
+    ).build()
+
+    await client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        trigger_id=body["trigger_id"],
+        view=modal,
+    )
