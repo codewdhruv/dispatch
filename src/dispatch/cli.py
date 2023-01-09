@@ -723,6 +723,7 @@ def signals_group():
 @click.argument("project")
 def run_slack_websocket(organization: str, project: str):
     """Runs the slack websocket process."""
+    import asyncio
     from sqlalchemy import true
 
     from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
