@@ -27,12 +27,3 @@ class SubjectMetadata(BaseModel):
 
     project_id: Optional[str]
     channel_id: Optional[str]
-
-
-class TaskMetadata(SubjectMetadata):
-    resource_id: str
-
-
-class MonitorMetadata(SubjectMetadata):
-    weblink: str
-    plugin_instance_id: int
