@@ -38,6 +38,25 @@ pipeline:
                       uses: github/codeql-action/init@v1
                       with:
                         languages: <+matrix.language>
+              - step:
+                  type: Run
+                  name: Autobuild
+                  identifier: Autobuild
+                  spec:
+                    shell: Sh
+                    command: |-
+                      make bootstrap
+                      make release
+              - step:
+                  type: Plugin
+                  name: Perform CodeQL Analysis
+                  identifier: Perform_CodeQL_Analysis
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: plugins/github-actions
+                    privileged: true
+                    settings:
+                      uses: github/codeql-action/analyze@v1
         strategy:
           matrix:
             language:
