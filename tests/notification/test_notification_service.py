@@ -23,6 +23,7 @@ def test_create(session, project):
     description = "description"
     type = "email"
     target = "target"
+    subject = "Incident"
     enabled = True
 
     notification_in = NotificationCreate(
@@ -32,6 +33,7 @@ def test_create(session, project):
         target=target,
         enabled=enabled,
         project=project,
+        subject=subject,
     )
     notification = create(db_session=session, notification_in=notification_in)
     assert notification

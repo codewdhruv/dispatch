@@ -12,6 +12,7 @@ def test_create(session, project):
     name = "name"
     description = "description"
     expression = [{}]
+    subject = "Incident"
     type = "type"
 
     search_filter_in = SearchFilterCreate(
@@ -19,6 +20,7 @@ def test_create(session, project):
         description=description,
         expression=expression,
         type=type,
+        subject=subject,
         project=project,
     )
     search_filter = create(db_session=session, search_filter_in=search_filter_in)

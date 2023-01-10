@@ -946,6 +946,7 @@ class NotificationFactory(BaseFactory):
     description = FuzzyText()
     type = FuzzyChoice(["email", "conversation"])
     target = FuzzyText()
+    subject = FuzzyChoice("Incident", "Case")
     enabled = Faker().pybool()
 
     class Meta:
@@ -969,6 +970,7 @@ class SearchFilterFactory(BaseFactory):
     name = FuzzyText()
     description = FuzzyText()
     expression = [{}]
+    subject = FuzzyChoice("Incident", "Case")
     type = FuzzyText()
 
     class Meta:
