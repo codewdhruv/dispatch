@@ -1,0 +1,40 @@
+pipeline:
+  name: test-dispatch
+  identifier: testdispatch
+  projectIdentifier: DhrubaCI
+  orgIdentifier: default
+  tags: {}
+  properties:
+    ci:
+      codebase:
+        connectorRef: dhrubaaccountconnector
+        repoName: dispatch
+        build: <+input>
+  stages:
+    - stage:
+        name: Analyze
+        identifier: Analyze
+        description: ""
+        type: CI
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+          execution:
+            steps:
+              - step:
+                  type: Plugin
+                  name: Initialize CodeQL
+                  identifier: Initialize_CodeQL
+                  spec:
+                    connectorRef: account.harnessImage
+                    image: plugins/github-actions
+                    privileged: true
+                    settings:
+                      uses: github/codeql-action/init@v1
+                      with:
+                        languages: <+matrix.language>
