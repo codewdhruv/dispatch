@@ -31,7 +31,7 @@ router = APIRouter()
 logging.basicConfig(level=logging.DEBUG)
 
 
-@app.error
+# @app.error
 async def app_error_handler(
     error: Any, client: AsyncWebClient, body: dict, logger: logging.Logger
 ) -> BoltResponse:
@@ -51,18 +51,18 @@ async def app_error_handler(
     return BoltResponse(body=body, status=HTTPStatus.INTERNAL_SERVER_ERROR.value)
 
 
-@app.event(
-    {"type": "message"},
-    middleware=[
-        message_context_middleware,
-        db_middleware,
-        user_middleware,
-        configuration_middleware,
-    ],
-)
-async def handle_message_events() -> None:
-    """Container function for all message functions."""
-    await message_dispatcher.dispatch(**locals())
+# @app.event(
+#    {"type": "message"},
+#    middleware=[
+#        message_context_middleware,
+#        db_middleware,
+#        user_middleware,
+#        configuration_middleware,
+#    ],
+# )
+# async def handle_message_events() -> None:
+#    """Container function for all message functions."""
+#    await message_dispatcher.dispatch(**locals())
 
 
 handler = AsyncSlackRequestHandler(app)

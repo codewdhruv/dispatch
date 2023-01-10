@@ -1,20 +1,12 @@
-from blockkit import Context, MarkdownText, Modal, Input, UsersSelect, Section
+from blockkit import Context, Input, MarkdownText, Modal, Section, UsersSelect
 
 from dispatch.case import flows as case_flows
 from dispatch.case import service as case_service
 from dispatch.case.enums import CaseStatus
-from dispatch.case.models import Case, CaseUpdate, CaseCreate
+from dispatch.case.models import Case, CaseCreate, CaseUpdate
 from dispatch.common.utils.cli import install_plugins
 from dispatch.incident import flows as incident_flows
 from dispatch.plugins.dispatch_slack.bolt import app
-from dispatch.plugins.dispatch_slack.middleware import (
-    action_context_middleware,
-    button_context_middleware,
-    db_middleware,
-    user_middleware,
-    modal_submit_middleware,
-    shortcut_context_middleware,
-)
 from dispatch.plugins.dispatch_slack.case.enums import (
     CaseEscalateActions,
     CaseNotificationActions,
@@ -22,9 +14,14 @@ from dispatch.plugins.dispatch_slack.case.enums import (
     CaseResolveActions,
     CaseShortcutCallbacks,
 )
+from dispatch.plugins.dispatch_slack.case.messages import (
+    create_case_notification,
+    create_signal_messages,
+)
 from dispatch.plugins.dispatch_slack.fields import (
     DefaultBlockIds,
     case_priority_select,
+    case_status_select,
     case_type_select,
     description_input,
     incident_priority_select,
@@ -32,11 +29,22 @@ from dispatch.plugins.dispatch_slack.fields import (
     project_select,
     resolution_input,
     title_input,
-    case_status_select,
 )
-from dispatch.plugins.dispatch_slack.messaging import create_case_notification
+from dispatch.plugins.dispatch_slack.middleware import (
+    action_context_middleware,
+    button_context_middleware,
+    db_middleware,
+    modal_submit_middleware,
+    shortcut_context_middleware,
+    user_middleware,
+)
 from dispatch.plugins.dispatch_slack.models import SubjectMetadata
 from dispatch.project import service as project_service
+
+
+def configure(config):
+    """Maps commands/events to their functions."""
+    pass
 
 
 def assignee_select(
@@ -58,14 +66,14 @@ def assignee_select(
     )
 
 
-@app.message("case")
+@app.message("createCase")
 async def message_hello(client, context):
     from dispatch.conversation.models import Conversation
     from dispatch.plugins.dispatch_slack.service import get_default_organization_scope
 
     install_plugins()
     db_session = get_default_organization_scope()
-    case = db_session.query(Case).filter(Case.id == 21).one()
+    case = db_session.query(Case).filter(Case.id == 31).one()
 
     result = await client.chat_postMessage(
         blocks=create_case_notification(case=case, channel_id=context["channel_id"]),
@@ -81,6 +89,8 @@ async def message_hello(client, context):
             ).json(),
         },
     )
+    case.conversation = Conversation(channel_id=context["channel_id"], thread_id=result["ts"])
+    db_session.commit()
 
     await client.chat_postMessage(
         text="All real-time case collaboration should be captured in this thread.",
@@ -88,10 +98,24 @@ async def message_hello(client, context):
         thread_ts=result["ts"],
     )
 
-    case.conversation = Conversation(channel_id=context["channel_id"], thread_id=result["ts"])
-    db_session.commit()
-
-    await result["ts"]
+    if case.signal_instances:
+        messages = create_signal_messages(case=case)
+        for m in messages:
+            await client.chat_postMessage(
+                channel=context["channel_id"],
+                thread_ts=result["ts"],
+                blocks=m["blocks"],
+                metadata={
+                    "event_type": "signal_created",
+                    "event_payload": SubjectMetadata(
+                        type="case",
+                        id=case.id,
+                        organization_slug=case.project.organization.slug,
+                        project_id=case.project.id,
+                        channel_id=context["channel_id"],
+                    ).json(),
+                },
+            )
 
 
 @app.action(CaseNotificationActions.reopen, middleware=[button_context_middleware, db_middleware])

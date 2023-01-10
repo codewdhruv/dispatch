@@ -1,11 +1,5 @@
-from blockkit import (
-    Actions,
-    Button,
-    Context,
-    Divider,
-    Message,
-    Section,
-)
+from typing import List
+from blockkit import Actions, Button, Context, Message, Section, Divider
 
 from dispatch.config import DISPATCH_UI_URL
 from dispatch.case.enums import CaseStatus
@@ -14,6 +8,7 @@ from dispatch.plugins.dispatch_slack.models import SubjectMetadata
 from dispatch.plugins.dispatch_slack.case.enums import (
     CaseNotificationActions,
 )
+from dispatch.plugins.dispatch_slack.service import chunks
 
 
 def create_case_notification(case: Case, channel_id: str):
@@ -80,27 +75,6 @@ def create_case_notification(case: Case, channel_id: str):
             ]
         )
     else:
-        if case.signal_instances:
-            blocks.extend(
-                [
-                    Divider(),
-                    Context(elements=["*Signal Details*"]),
-                ]
-            )
-
-            for s in case.signal_instances:
-                fields = []
-                # TODO filter for only *important* 10 fields
-                # TODO hide duplicates
-                for k, v in s.raw.items():
-                    fields.append(f"*{k.strip()}* \n {v.strip()}")
-
-                blocks.extend(
-                    [
-                        Section(fields=fields[:10]),
-                        Divider(),
-                    ]
-                )
         blocks.extend(
             [
                 Actions(
@@ -135,3 +109,72 @@ def create_case_notification(case: Case, channel_id: str):
         )
 
     return Message(blocks=blocks).build()["blocks"]
+
+
+def create_signal_messages(case: Case) -> List[Message]:
+    """Creates the signal instance message."""
+    messages = []
+    for instance in case.signal_instances:
+        signal_metadata_blocks = [
+            Section(
+                text="*Signal Details*",
+                accessory=Button(
+                    text="View",
+                    url=f"{DISPATCH_UI_URL}/{case.project.organization.slug}/signals/{instance.id}",
+                ),
+            ),
+        ]
+        if instance.raw.get("identity"):
+            signal_metadata_blocks.append(Context(elements=["*Identity*"]))
+
+            signal_metadata_blocks.append(
+                Section(
+                    fields=[
+                        f"*{k.strip()}* \n {v.strip()}" for k, v in instance.raw["identity"].items()
+                    ]
+                )
+            )
+            signal_metadata_blocks.append(Divider())
+
+        if instance.raw.get("action"):
+            signal_metadata_blocks.append(Context(elements=["*Actions*"]))
+            for item in instance.raw["action"]:
+                signal_metadata_blocks.append(Context(elements=[f"*{item['type']}*"]))
+                for chunk in chunks([(k, v) for k, v in item["value"].items()], 10):
+                    signal_metadata_blocks.append(
+                        Section(fields=[f"*{k.strip()}* \n {v.strip()}" for k, v in chunk]),
+                    )
+            signal_metadata_blocks.append(Divider())
+
+        if instance.raw.get("origin_location"):
+            signal_metadata_blocks.append(Context(elements=["*Origin Location*"]))
+            for item in instance.raw["origin_location"]:
+                signal_metadata_blocks.append(
+                    Section(fields=[f"*{item['type'].strip()}* \n {item['value'].strip()}"]),
+                )
+            signal_metadata_blocks.append(Divider())
+
+        if instance.raw.get("asset"):
+            signal_metadata_blocks.append(Context(elements=["*Assets*"]))
+            for item in instance.raw["asset"]:
+                signal_metadata_blocks.append(
+                    Section(fields=[f"*{item['type'].strip()}* \n {item['id'].strip()}"]),
+                )
+            signal_metadata_blocks.append(Divider())
+
+        for item in instance.raw.get("additional_metadata", []):
+            signal_metadata_blocks.append(Context(elements=[f"*{item['name']}*"]))
+
+            if isinstance(item["value"], dict):
+                # sections have a hard limit of 10 fields
+                for chunk in chunks([(k, v) for k, v in item["value"].items()], 10):
+                    signal_metadata_blocks.append(
+                        Section(fields=[f"*{k.strip()}* \n {v.strip()}" for k, v in chunk]),
+                    )
+            else:
+                signal_metadata_blocks.append(
+                    Section(text=item["value"]),
+                )
+        messages.append(Message(blocks=signal_metadata_blocks).build())
+
+    return messages
